@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.0](https://github.com/Aarklendoia/shopguard/compare/worker-v0.1.0...worker-v0.2.0) (2026-11-13)
+
+
+### Features
+
+* **worker:** hosting network signal ([#29](https://github.com/Aarklendoia/shopguard/issues/29)) ([e779cdc](https://github.com/Aarklendoia/shopguard/commit/e779cdcd2cc3239f5efae3fe4416e5e257843c56)), closes [#3](https://github.com/Aarklendoia/shopguard/issues/3)
+* **worker:** persist verdicts and re-check them ([#31](https://github.com/Aarklendoia/shopguard/issues/31)) ([bff61b7](https://github.com/Aarklendoia/shopguard/commit/bff61b7d7e9b7ef7bd0aeb44a3b3812bee3ff975)), closes [#4](https://github.com/Aarklendoia/shopguard/issues/4)
+
 ## 0.1.0 (2026-11-13)
 
 
