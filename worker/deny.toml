@@ -7,6 +7,12 @@ yanked = "deny"
 [licenses]
 version = 2
 allow = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Unicode-3.0", "Zlib", "MPL-2.0"]
+# the Mozilla CA list compiled into the binary (the image has no system store) is data,
+# under a permissive data licence: allowed for these crates only
+exceptions = [
+  { name = "webpki-roots", allow = ["CDLA-Permissive-2.0"] },
+  { name = "webpki-root-certs", allow = ["CDLA-Permissive-2.0"] },
+]
 
 [bans]
 multiple-versions = "warn"
