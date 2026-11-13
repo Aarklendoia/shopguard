@@ -40,12 +40,28 @@
                     $('#st_worker').text(data.message || '{{ lang._('Unreachable') }}');
                     $('#st_pending').text('');
                 }
+                var c = data.collect;
+                if (!c) {
+                    $('#st_collect').text('{{ lang._('Not run yet') }}');
+                } else {
+                    var when = new Date(c.time * 1000).toLocaleString();
+                    if (c.status === 'ok') {
+                        $('#st_collect').text(when + ': ' + c.queued + ' {{ lang._('new domains sent') }}');
+                    } else if (c.status === 'error') {
+                        $('#st_collect').text(when + ': ' + c.message);
+                    } else {
+                        $('#st_collect').text(when + ': ' + c.status);
+                    }
+                }
             });
         }
 
         $('#btn_save').click(function () {
             saveFormToEndpoint('/api/shopguard/settings/set', 'frm_general', function () {
-                refreshStatus();
+                // (re)creates or removes the collection cron job
+                ajaxCall('/api/shopguard/service/reconfigure', {}, function () {
+                    refreshStatus();
+                });
             });
         });
 
@@ -61,6 +77,7 @@
         <tbody>
             <tr><td style="width:22%">{{ lang._('Status') }}</td><td id="st_worker"></td></tr>
             <tr><td>{{ lang._('Domains waiting for analysis') }}</td><td id="st_pending"></td></tr>
+            <tr><td>{{ lang._('Last collection') }}</td><td id="st_collect"></td></tr>
         </tbody>
     </table>
 </div>

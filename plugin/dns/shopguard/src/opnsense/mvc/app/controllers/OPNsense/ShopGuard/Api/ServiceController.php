@@ -42,4 +42,16 @@ class ServiceController extends ApiControllerBase
         $data = json_decode($response, true);
         return is_array($data) ? $data : ['status' => 'error', 'message' => $response];
     }
+
+    /**
+     * apply the settings: the collection cron job exists only while ShopGuard is enabled
+     */
+    public function reconfigureAction()
+    {
+        if (!$this->request->isPost()) {
+            return ['status' => 'failed'];
+        }
+        $out = trim((new Backend())->configdRun('cron restart'));
+        return ['status' => stripos($out, 'error') === false ? 'ok' : 'failed'];
+    }
 }
