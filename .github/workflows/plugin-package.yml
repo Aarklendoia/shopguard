@@ -1,0 +1,148 @@
+name: Plugin package
+
+# Builds os-shopguard in a FreeBSD VM from the opnsense/plugins tree, signs a pkg
+# repository with PKG_SIGNING_KEY and checks it with pkg as a router would, then runs
+# plugin/install.sh against it. Artifacts: os-shopguard-<version> (the package) and
+# pkg-repo (the signed repository).
+# Called by plugin.yml on PRs and pushes, and by release.yml for a plugin release, which
+# attaches the package and publishes the repository. Read-only here: a called workflow
+# cannot get more permissions than its caller, and plugin.yml only reads.
+
+on:
+  workflow_call:
+    inputs:
+      require_signature:
+        description: fail without PKG_SIGNING_KEY (releases)
+        type: boolean
+        default: false
+    outputs:
+      version:
+        value: ${{ jobs.package.outputs.version }}
+    secrets:
+      PKG_SIGNING_KEY:
+        required: false
+
+permissions: {}
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: v
+        run: |
+          version=$(sed -n 's/^PLUGIN_VERSION=[[:space:]]*//p' plugin/dns/shopguard/Makefile)
+          [ -n "$version" ] || { echo "::error::PLUGIN_VERSION not found"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # The repository is signed with PKG_SIGNING_KEY (not available to PRs from forks or
+      # Dependabot). Its public part must be the key embedded in install.sh, which routers trust.
+      - name: Signing key
+        env:
+          KEY: ${{ secrets.PKG_SIGNING_KEY }}
+          REQUIRED: ${{ inputs.require_signature }}
+        run: |
+          sed -n "/^DEFAULT_KEY='/,/^-----END PUBLIC KEY-----'/p" plugin/install.sh \
+            | sed -e "s/^DEFAULT_KEY='//" -e "s/'$//" > repo.pub
+          openssl rsa -pubin -in repo.pub -noout
+          if [ -z "$KEY" ]; then
+            [ "$REQUIRED" != true ] || { echo "::error::PKG_SIGNING_KEY is needed for a release"; exit 1; }
+            echo "::warning::PKG_SIGNING_KEY unavailable, repository not built"
+            exit 0
+          fi
+          umask 077
+          printf '%s\n' "$KEY" > .signing.key
+          openssl rsa -in .signing.key -pubout 2>/dev/null | cmp -s - repo.pub \
+            || { echo "::error::PKG_SIGNING_KEY does not match the public key in install.sh"; exit 1; }
+
+      - name: Build (FreeBSD)
+        uses: vmactions/freebsd-vm@811efaaac0668df8bfb8308c3ec997b5ab50037b # v1.6.0
+        env:
+          HASH: ${{ github.sha }}
+        with:
+          release: '14.3'
+          envs: 'HASH'
+          prepare: env ASSUME_ALWAYS_YES=yes pkg install git
+          run: |
+            set -e
+            git clone -q --depth 1 https://github.com/opnsense/plugins /tmp/plugins
+            cp -R plugin/dns/shopguard /tmp/plugins/dns/
+            # empty PLUGIN_DEVEL: otherwise the opnsense/plugins master branch builds os-shopguard-devel
+            make -C /tmp/plugins/dns/shopguard package PLUGIN_DEVEL= \
+              PLUGIN_HASH="$(echo "$HASH" | cut -c1-10)" PKGDIR="$PWD/dist"
+            pkg info -F dist/*.pkg
+            [ "$(pkg query -F dist/*.pkg %n)" = os-shopguard ] || { echo 'unexpected package name'; exit 1; }
+            pkg query -F dist/*.pkg 'abi: %q' | grep -qi 'freebsd:\*:\*' || { echo 'package is tied to an ABI'; exit 1; }
+            for f in /usr/local/etc/inc/plugins.inc.d/shopguard.inc \
+                     /usr/local/opnsense/scripts/OPNsense/ShopGuard/shopguard.py \
+                     /usr/local/opnsense/service/conf/actions.d/actions_shopguard.conf; do
+              pkg query -F dist/*.pkg %Fp | grep -qx "$f" || { echo "$f missing from the package"; exit 1; }
+            done
+
+            # signed pkg repository, checked with pkg itself as a router would
+            if [ -f .signing.key ]; then
+              mkdir -p repo/All
+              cp dist/*.pkg repo/All/
+              pkg repo repo .signing.key
+              rm -f .signing.key
+              # each check with an empty pkg database: a catalogue accepted by an earlier
+              # check must not be reused
+              check_repo() {
+                rm -rf /tmp/repos /tmp/pkgdb; mkdir /tmp/repos /tmp/pkgdb
+                printf 'ShopGuard: { url: "file://%s/repo", signature_type: "pubkey", pubkey: "%s", enabled: yes }\n' \
+                  "$PWD" "$1" > /tmp/repos/ShopGuard.conf
+                pkg -o PKG_DBDIR=/tmp/pkgdb -R /tmp/repos update -f -r ShopGuard \
+                  && [ "$(pkg -o PKG_DBDIR=/tmp/pkgdb -R /tmp/repos rquery -r ShopGuard %n os-shopguard)" = os-shopguard ]
+              }
+              check_repo "$PWD/repo.pub" || { echo 'signed repository rejected with the install.sh key'; exit 1; }
+              openssl genrsa -out /tmp/other.key 2048 2>/dev/null
+              openssl rsa -in /tmp/other.key -pubout -out /tmp/other.pub 2>/dev/null
+              if check_repo /tmp/other.pub; then echo 'repository accepted with another key'; exit 1; fi
+              echo 'repository signature OK'
+
+              # install.sh against this repository: move a hand-made install (pkg add), run
+              # again, then a fresh install. OPNsense parts are stubbed.
+              mkdir -p /usr/local/opnsense/scripts/firmware
+              printf '#!/bin/sh\necho "register $*" >> /tmp/register.log\n' > /usr/local/opnsense/scripts/firmware/register.php
+              chmod +x /usr/local/opnsense/scripts/firmware/register.php
+              printf '#!/bin/sh\n. /etc/rc.subr\nname=configd\nrcvar=configd_enable\nload_rc_config $name\nstart_cmd=:\nstop_cmd=:\nrun_rc_command "$1"\n' > /usr/local/etc/rc.d/configd
+              chmod +x /usr/local/etc/rc.d/configd
+              sysrc -q configd_enable=YES
+              export SHOPGUARD_URL="file://$PWD/repo"
+              pkg add dist/*.pkg
+              [ "$(pkg annotate -Sq os-shopguard repository)" != ShopGuard ] || { echo 'pkg add already gives the repository'; exit 1; }
+              sh plugin/install.sh
+              [ "$(pkg annotate -Sq os-shopguard repository)" = ShopGuard ] || { echo 'not moved to the repository'; exit 1; }
+              sh plugin/install.sh | grep -q 'already installed from ShopGuard' || { echo 'second run reinstalled'; exit 1; }
+              pkg delete -y os-shopguard        # a router where nothing is installed yet
+              sh plugin/install.sh
+              [ "$(pkg annotate -Sq os-shopguard repository)" = ShopGuard ] || { echo 'fresh install failed'; exit 1; }
+              [ "$(grep -c 'register install os-shopguard' /tmp/register.log)" = 3 ] || { echo 'not registered'; exit 1; }
+              grep -q 'url: "file://' /usr/local/etc/pkg/repos/ShopGuard.conf
+              cmp /usr/local/etc/ssl/ShopGuard.pub repo.pub
+              echo 'install.sh OK'
+            fi
+
+      - name: Remove the signing key
+        if: always()
+        run: rm -f .signing.key
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: os-shopguard-${{ steps.v.outputs.version }}
+          path: dist/*.pkg
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: hashFiles('repo/meta.conf') != ''
+        with:
+          name: pkg-repo
+          path: repo/
+          if-no-files-found: error

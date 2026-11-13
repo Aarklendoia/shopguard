@@ -6,6 +6,9 @@ name: Release
 #   ghcr.io/<owner>/shopguard-worker:X.Y.Z, :X.Y, :latest
 # Images are only rebuilt on a release: no scheduled rebuilds (the image holds nothing
 # but our static binary, see audit.yml for dependency advisories).
+# Merging the plugin one tags plugin-vX.Y.Z: os-shopguard is built and checked by
+# plugin-package.yml, attached to the release, and the signed pkg repository is published
+# on GitHub Pages (see plugin/install.sh).
 
 on:
   push:
@@ -23,6 +26,7 @@ jobs:
       worker: ${{ steps.rp.outputs['worker--release_created'] }}
       worker_version: ${{ steps.rp.outputs['worker--version'] }}
       plugin: ${{ steps.rp.outputs['plugin/dns/shopguard--release_created'] }}
+      plugin_tag: ${{ steps.rp.outputs['plugin/dns/shopguard--tag_name'] }}
     steps:
       - id: rp
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
@@ -105,3 +109,75 @@ jobs:
           DIGEST: ${{ steps.build.outputs.digest }}
           IMAGE: ${{ steps.img.outputs.name }}
         run: cosign sign --yes "$IMAGE@$DIGEST"
+
+  plugin-package:
+    needs: release-please
+    if: needs.release-please.outputs.plugin == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/plugin-package.yml
+    with:
+      require_signature: true
+    secrets:
+      PKG_SIGNING_KEY: ${{ secrets.PKG_SIGNING_KEY }}
+
+  plugin-release:
+    needs: [release-please, plugin-package]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: os-shopguard-${{ needs.plugin-package.outputs.version }}
+          path: dist
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.release-please.outputs.plugin_tag }}
+          VERSION: ${{ needs.plugin-package.outputs.version }}
+        run: |
+          [ "$TAG" = "plugin-v$VERSION" ] || { echo "::error::$TAG does not match the Makefile ($VERSION)"; exit 1; }
+          {
+            echo "Install once, as root on the router (it adds the signed package repository; updates then"
+            echo "come with the OPNsense updates):"
+            echo
+            echo '```sh'
+            echo "fetch -o - https://raw.githubusercontent.com/$GITHUB_REPOSITORY/main/plugin/install.sh | sh"
+            echo '```'
+            echo
+            gh release view "$TAG" --json body -q .body --repo "$GITHUB_REPOSITORY"
+          } > notes.md
+          gh release upload "$TAG" dist/*.pkg --clobber --repo "$GITHUB_REPOSITORY"
+          gh release edit "$TAG" --title "Plugin os-shopguard $VERSION" --notes-file notes.md \
+            --repo "$GITHUB_REPOSITORY"
+
+  # GitHub Pages serve the signed repository at https://<owner>.github.io/<repo>/pkg/
+  # (Settings > Pages > Source: GitHub Actions)
+  plugin-pages:
+    needs: [plugin-package, plugin-release]
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}pkg/
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: pkg-repo
+          path: site/pkg
+
+      - name: Check the repository
+        run: |
+          ls -l site/pkg site/pkg/All
+          [ -f site/pkg/meta.conf ] && ls site/pkg/All/os-shopguard-*.pkg >/dev/null
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+
+      - id: deploy
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
