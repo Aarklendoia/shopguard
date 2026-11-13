@@ -75,7 +75,7 @@ jobs:
 
       # COPY only, no RUN: both platforms build without emulation
       - id: build
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: worker
           file: worker/Dockerfile.release
