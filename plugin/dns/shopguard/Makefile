@@ -1,7 +1,7 @@
 PLUGIN_NAME=		shopguard
 # set by release-please from the Conventional Commits merged since the last release
 # x-release-please-start-version
-PLUGIN_VERSION=		0.1.0
+PLUGIN_VERSION=		0.2.0
 # x-release-please-end
 PLUGIN_COMMENT=		Fake online shop detection for Unbound DNS
 PLUGIN_MAINTAINER=	edtech
