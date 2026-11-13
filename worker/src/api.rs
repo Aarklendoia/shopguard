@@ -78,7 +78,10 @@ async fn auth(State(state): State<AppState>, req: Request, next: Next) -> Respon
 #[derive(Serialize)]
 struct Status {
     version: &'static str,
+    /// Domains never analyzed yet.
     pending: usize,
+    /// Domains known (analyzed or not).
+    domains: usize,
     threshold: u8,
 }
 
@@ -86,6 +89,7 @@ async fn status(State(state): State<AppState>) -> Json<Status> {
     Json(Status {
         version: env!("CARGO_PKG_VERSION"),
         pending: state.store.pending().await,
+        domains: state.store.len().await,
         threshold: state.threshold,
     })
 }

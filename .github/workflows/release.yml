@@ -59,7 +59,7 @@ jobs:
         run: |
           cargo zigbuild --locked --release --target x86_64-unknown-linux-musl
           cargo zigbuild --locked --release --target aarch64-unknown-linux-musl
-          mkdir -p dist/amd64 dist/arm64
+          mkdir -p dist/amd64 dist/arm64 dist/data
           cp target/x86_64-unknown-linux-musl/release/shopguard-worker dist/amd64/
           cp target/aarch64-unknown-linux-musl/release/shopguard-worker dist/arm64/
 
