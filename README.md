@@ -46,6 +46,7 @@ worker/                          shopguard-worker (Rust)
   src/netguard.rs                which addresses the worker may connect to (SSRF guard)
   src/rdap.rs                    analyzer: domain registration age (RDAP)
   src/siret.rs                   SIREN/SIRET validation
+  src/tls.rs                     analyzer: certificate presented on port 443
   Dockerfile                     local build
   Dockerfile.release             release image (static binaries built by CI)
 plugin/dns/shopguard/            os-shopguard OPNsense plugin
