@@ -131,6 +131,8 @@ updates.
 fetch -o - https://raw.githubusercontent.com/Aarklendoia/shopguard/main/plugin/install.sh | sh
 ```
 
+Backend tests, against a fake worker:
+
 ```sh
 python3 -I plugin/tests/test_shopguard.py plugin/dns/shopguard/src/opnsense/scripts/OPNsense/ShopGuard/shopguard.py
 ```
