@@ -80,11 +80,12 @@ jobs:
             pkg info -F dist/*.pkg
             [ "$(pkg query -F dist/*.pkg %n)" = os-shopguard ] || { echo 'unexpected package name'; exit 1; }
             pkg query -F dist/*.pkg 'abi: %q' | grep -qi 'freebsd:\*:\*' || { echo 'package is tied to an ABI'; exit 1; }
-            for f in /usr/local/etc/inc/plugins.inc.d/shopguard.inc \
-                     /usr/local/opnsense/scripts/OPNsense/ShopGuard/shopguard.py \
-                     /usr/local/opnsense/service/conf/actions.d/actions_shopguard.conf; do
-              pkg query -F dist/*.pkg %Fp | grep -qx "$f" || { echo "$f missing from the package"; exit 1; }
+            # every file of src/ is installed under /usr/local
+            pkg query -F dist/*.pkg %Fp > /tmp/files
+            (cd plugin/dns/shopguard/src && find . -type f) | sed 's#^\./#/usr/local/#' | while read -r f; do
+              grep -qx "$f" /tmp/files || { echo "$f missing from the package"; exit 1; }
             done
+            echo "$(wc -l < /tmp/files) files in the package"
 
             # signed pkg repository, checked with pkg itself as a router would
             if [ -f .signing.key ]; then
