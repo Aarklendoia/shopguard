@@ -53,7 +53,13 @@ jobs:
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: worker
-      - run: pipx install cargo-zigbuild
+      # cargo-zigbuild does not bring zig: add the ziglang wheel to its venv and put zig on PATH
+      - name: cargo-zigbuild and zig
+        run: |
+          pipx install cargo-zigbuild
+          pipx inject cargo-zigbuild ziglang
+          py="$(pipx environment --value PIPX_LOCAL_VENVS)/cargo-zigbuild/bin/python"
+          "$py" -I -c "import ziglang, os; print(os.path.dirname(ziglang.__file__))" >> "$GITHUB_PATH"
       - name: Build
         run: |
           for t in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do
