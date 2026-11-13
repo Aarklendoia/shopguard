@@ -1,6 +1,7 @@
 //! Settings, from environment variables (12-factor: the container has no config file).
 
 use std::net::SocketAddr;
+use std::path::PathBuf;
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -12,6 +13,10 @@ pub struct Config {
     pub threshold: u8,
     /// `SHOPGUARD_QUEUE`: maximum number of domains waiting for analysis, default 10000.
     pub queue: usize,
+    /// `SHOPGUARD_DATA`: directory of the store, default `/data`. Empty: memory only.
+    pub data: Option<PathBuf>,
+    /// `SHOPGUARD_MAX_DOMAINS`: domains kept, least recently seen evicted, default 100000.
+    pub max_domains: usize,
 }
 
 impl Config {
@@ -48,11 +53,25 @@ impl Config {
                 .filter(|q| *q > 0)
                 .ok_or_else(|| format!("SHOPGUARD_QUEUE={q}: expected a positive number"))?,
         };
+        let data = match get("SHOPGUARD_DATA") {
+            None => Some(PathBuf::from("/data")),
+            Some(d) if d.trim().is_empty() => None,
+            Some(d) => Some(PathBuf::from(d)),
+        };
+        let max_domains =
+            match get("SHOPGUARD_MAX_DOMAINS") {
+                None => crate::store::DEFAULT_CAP,
+                Some(m) => m.parse::<usize>().ok().filter(|m| *m > 0).ok_or_else(|| {
+                    format!("SHOPGUARD_MAX_DOMAINS={m}: expected a positive number")
+                })?,
+            };
         Ok(Self {
             listen,
             token,
             threshold,
             queue,
+            data,
+            max_domains,
         })
     }
 }
@@ -77,6 +96,9 @@ mod tests {
         let c = cfg(&[TOKEN]).unwrap();
         assert_eq!(c.listen.to_string(), "[::]:8080");
         assert_eq!((c.threshold, c.queue), (70, 10_000));
+        assert_eq!(c.data.as_deref(), Some(std::path::Path::new("/data")));
+        assert_eq!(c.max_domains, 100_000);
+        assert_eq!(cfg(&[TOKEN, ("SHOPGUARD_DATA", "")]).unwrap().data, None);
     }
 
     #[test]
@@ -86,5 +108,6 @@ mod tests {
         assert!(cfg(&[TOKEN, ("SHOPGUARD_THRESHOLD", "101")]).is_err());
         assert!(cfg(&[TOKEN, ("SHOPGUARD_LISTEN", "nope")]).is_err());
         assert!(cfg(&[TOKEN, ("SHOPGUARD_QUEUE", "0")]).is_err());
+        assert!(cfg(&[TOKEN, ("SHOPGUARD_MAX_DOMAINS", "0")]).is_err());
     }
 }

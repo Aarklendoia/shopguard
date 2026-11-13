@@ -13,10 +13,16 @@ services:
       # SHOPGUARD_LOG: "info,shopguard_worker=debug"
     ports:
       - "8080:8080"
-    # nothing to write, nothing to gain
+    # verdicts survive restarts and image updates
+    volumes:
+      - shopguard-data:/data
+    # nothing else to write, nothing to gain
     read_only: true
     user: "65534:65534"
     cap_drop: [ALL]
     security_opt:
       - no-new-privileges:true
     mem_limit: 128m
+
+volumes:
+  shopguard-data:

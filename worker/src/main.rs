@@ -46,13 +46,31 @@ async fn main() -> ExitCode {
         return healthcheck(cfg.listen).await;
     }
 
-    let store = Arc::new(store::Store::default());
+    let store = match &cfg.data {
+        Some(dir) if dir.is_dir() => match store::Store::open(dir, cfg.max_domains) {
+            Ok(s) => s,
+            Err(e) => {
+                error!("cannot use {}: {e}", dir.join(store::FILE).display());
+                return ExitCode::FAILURE;
+            }
+        },
+        Some(dir) => {
+            tracing::warn!(
+                "{} does not exist: verdicts are kept in memory only",
+                dir.display()
+            );
+            store::Store::memory(cfg.max_domains)
+        }
+        None => store::Store::memory(cfg.max_domains),
+    };
+    let store = Arc::new(store);
     let (tx, rx) = tokio::sync::mpsc::channel(cfg.queue);
     tokio::spawn(analysis::run(
         rx,
         store.clone(),
         analysis::analyzers(http::client()),
     ));
+    tokio::spawn(schedule(store.clone(), tx.clone()));
 
     let state = api::AppState {
         store,
@@ -89,6 +107,28 @@ async fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
     ExitCode::SUCCESS
+}
+
+/// Queues the domains due for analysis: received before a restart, or with an expired
+/// verdict. Runs at start, then every minute, within the free room of the queue.
+async fn schedule(store: Arc<store::Store>, tx: tokio::sync::mpsc::Sender<String>) {
+    let mut tick = tokio::time::interval(Duration::from_secs(60));
+    loop {
+        tick.tick().await;
+        let due = store.due(store::now(), tx.capacity()).await;
+        if !due.is_empty() {
+            tracing::debug!(domains = due.len(), "scheduled for analysis");
+        }
+        for d in due {
+            if let Err(e) = tx.try_send(d) {
+                let d = match e {
+                    tokio::sync::mpsc::error::TrySendError::Full(d)
+                    | tokio::sync::mpsc::error::TrySendError::Closed(d) => d,
+                };
+                store.release(&d).await;
+            }
+        }
+    }
 }
 
 /// Binds `addr`. The default `[::]` falls back to `0.0.0.0` on hosts or container

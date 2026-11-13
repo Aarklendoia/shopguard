@@ -71,6 +71,8 @@ SHOPGUARD_TOKEN=$(cat .shopguard-token) docker compose -f deploy/docker-compose.
 | `SHOPGUARD_LISTEN`    | `[::]:8080` | listen address; falls back to `0.0.0.0` without IPv6     |
 | `SHOPGUARD_THRESHOLD` | `70`        | minimum score of the domains in the blocklist (0–100)    |
 | `SHOPGUARD_QUEUE`     | `10000`     | maximum number of domains waiting for analysis           |
+| `SHOPGUARD_DATA`      | `/data`     | directory of `store.jsonl`; empty: memory only           |
+| `SHOPGUARD_MAX_DOMAINS` | `100000`  | domains kept, the least recently seen are evicted        |
 | `SHOPGUARD_LOG`       | `info`      | log filter, e.g. `info,shopguard_worker=debug`           |
 
 Updating the image is up to you (Watchtower, Renovate on your compose files, or by hand):
@@ -91,7 +93,7 @@ cosign verify ghcr.io/aarklendoia/shopguard-worker:<version> \
 | Method | Path                    | Purpose                                         |
 |--------|-------------------------|-------------------------------------------------|
 | GET    | `/healthz`              | liveness, no token                              |
-| GET    | `/v1/status`            | version, queue length                           |
+| GET    | `/v1/status`            | version, domains known and not analyzed yet     |
 | POST   | `/v1/domains`           | `{"domains": [...]}`, at most 5000 per request  |
 | GET    | `/v1/verdicts`          | verdicts, `?min_score=`                         |
 | GET    | `/v1/verdicts/{domain}` | one verdict, with its signals                   |
