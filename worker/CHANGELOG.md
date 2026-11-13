@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/Aarklendoia/shopguard/compare/worker-v0.2.0...worker-v0.3.0) (2026-11-13)
+
+
+### Features
+
+* verdict list in the plugin ([#38](https://github.com/Aarklendoia/shopguard/issues/38)) ([fdaf215](https://github.com/Aarklendoia/shopguard/commit/fdaf2152e395e4463ff04fbd3b1b7f31038cef4b)), closes [#6](https://github.com/Aarklendoia/shopguard/issues/6)
+
 ## [0.2.0](https://github.com/Aarklendoia/shopguard/compare/worker-v0.1.0...worker-v0.2.0) (2026-11-13)
 
 
