@@ -1,0 +1,5 @@
+# Changes to CI, release and supply-chain configuration need the owner's review.
+*                       @Aarklendoia
+/.github/               @Aarklendoia
+/worker/deny.toml       @Aarklendoia
+/worker/Dockerfile*     @Aarklendoia

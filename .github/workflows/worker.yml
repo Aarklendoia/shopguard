@@ -13,15 +13,19 @@ defaults:
   run:
     working-directory: worker
 
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+          persist-credentials: false
+      - name: Rust toolchain
+        run: rustup toolchain install stable --profile minimal -c rustfmt,clippy && rustup default stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: worker
       - run: cargo fmt --check
@@ -31,22 +35,31 @@ jobs:
   deny:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           manifest-path: worker/Cargo.toml
 
   static-build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          targets: x86_64-unknown-linux-musl,aarch64-unknown-linux-musl
-      - uses: Swatinem/rust-cache@v2
+          persist-credentials: false
+      - name: Rust toolchain
+        run: rustup toolchain install stable --profile minimal -t x86_64-unknown-linux-musl,aarch64-unknown-linux-musl && rustup default stable
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: worker
-      - run: pipx install cargo-zigbuild
+      # cargo-zigbuild does not bring zig: add the ziglang wheel to its venv and put zig on PATH
+      - name: cargo-zigbuild and zig
+        run: |
+          pipx install cargo-zigbuild
+          pipx inject cargo-zigbuild ziglang
+          py="$(pipx environment --value PIPX_LOCAL_VENVS)/cargo-zigbuild/bin/python"
+          "$py" -I -c "import ziglang, os; print(os.path.dirname(ziglang.__file__))" >> "$GITHUB_PATH"
       - name: Build
         run: |
           for t in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do
