@@ -34,8 +34,12 @@ const HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(5);
 /// Neither the domain nor `www.` answers TLS on port 443: a shop takes payments, it has
 /// HTTPS. Small weight: many domains seen by a resolver are not websites (APIs, mail…).
 const NO_HTTPS_WEIGHT: i32 = 10;
-/// Expired, self-signed, wrong name…: browsers warn, real shops fix it.
+/// Expired, self-signed, unknown issuer…: browsers warn, real shops fix it.
 const INVALID_WEIGHT: i32 = 15;
+/// A certificate otherwise valid but for other names: the name is an API endpoint, a
+/// redirector or a CDN entry (load balancers, traffic managers…), not a site of its own.
+/// A fake shop gets a free certificate for its own name in minutes: no weight.
+const NAME_MISMATCH_WEIGHT: i32 = 0;
 /// One certificate covering this many unrelated registrable domains: shared platform.
 const SHARED_DOMAINS: usize = 20;
 const SHARED_WEIGHT: i32 = 10;
@@ -48,6 +52,9 @@ struct Probe {
     host: String,
     /// `None` when the chain is valid for `host`, else why it is not.
     invalid: Option<String>,
+    /// The only problem is the name: chain, dates and issuer are fine (webpki checks the
+    /// name last).
+    name_mismatch: bool,
     issuer: String,
     /// Organization in the subject (OV/EV certificates only).
     organization: Option<String>,
@@ -61,7 +68,7 @@ struct Probe {
 #[derive(Debug)]
 struct Recorder {
     inner: Arc<WebPkiServerVerifier>,
-    outcome: Mutex<Option<String>>,
+    outcome: Mutex<Option<(String, bool)>>,
 }
 
 impl ServerCertVerifier for Recorder {
@@ -80,7 +87,15 @@ impl ServerCertVerifier for Recorder {
             ocsp_response,
             now,
         ) {
-            *self.outcome.lock().unwrap_or_else(|p| p.into_inner()) = Some(e.to_string());
+            let name_only = matches!(
+                e,
+                rustls::Error::InvalidCertificate(
+                    rustls::CertificateError::NotValidForName
+                        | rustls::CertificateError::NotValidForNameContext { .. }
+                )
+            );
+            *self.outcome.lock().unwrap_or_else(|p| p.into_inner()) =
+                Some((e.to_string(), name_only));
         }
         // nothing is sent over this connection: reading the certificate is the point
         Ok(ServerCertVerified::assertion())
@@ -174,7 +189,9 @@ impl Tls {
     }
 }
 
-fn parse_leaf(host: &str, der: &[u8], invalid: Option<String>) -> Result<Probe, String> {
+fn parse_leaf(host: &str, der: &[u8], outcome: Option<(String, bool)>) -> Result<Probe, String> {
+    let name_mismatch = outcome.as_ref().is_some_and(|(_, n)| *n);
+    let invalid = outcome.map(|(why, _)| why);
     let (_, cert) = X509Certificate::from_der(der).map_err(|e| format!("certificate: {e}"))?;
     let first = |name: &x509_parser::x509::X509Name, org: bool| {
         let mut it: Box<dyn Iterator<Item = _>> = if org {
@@ -208,6 +225,7 @@ fn parse_leaf(host: &str, der: &[u8], invalid: Option<String>) -> Result<Probe, 
     Ok(Probe {
         host: host.to_owned(),
         invalid,
+        name_mismatch,
         issuer,
         organization: first(cert.subject(), true),
         not_before: cert.validity().not_before.timestamp(),
@@ -245,12 +263,29 @@ fn signals(domain: &str, p: &Probe, now: i64) -> Vec<Signal> {
             p.host, p.issuer
         ),
     )];
-    if let Some(why) = &p.invalid {
-        out.push(signal(
+    match &p.invalid {
+        Some(_) if p.name_mismatch => {
+            let mut names: Vec<&str> = p.names.iter().map(String::as_str).take(3).collect();
+            if p.names.len() > 3 {
+                names.push("…");
+            }
+            out.push(signal(
+                "tls_name_mismatch",
+                NAME_MISMATCH_WEIGHT,
+                format!(
+                    "{} presents a valid certificate for other names ({}): an endpoint, \
+                     redirect or CDN entry rather than a site of its own",
+                    p.host,
+                    names.join(", ")
+                ),
+            ));
+        }
+        Some(why) => out.push(signal(
             "tls_invalid",
             INVALID_WEIGHT,
             format!("browsers reject the certificate of {}: {why}", p.host),
-        ));
+        )),
+        None => {}
     }
     let others = other_domains(domain, &p.names);
     if others >= SHARED_DOMAINS {
@@ -286,6 +321,8 @@ impl Analyzer for Tls {
         Box::pin(async move {
             let mut resolved = false;
             let mut last_error = String::new();
+            // the first valid certificate wins; otherwise the first one read
+            let mut fallback: Option<Probe> = None;
             for host in [domain.to_owned(), format!("www.{domain}")] {
                 let addrs = match http::resolve_public(&host, 443).await {
                     Ok(a) => a,
@@ -296,12 +333,18 @@ impl Analyzer for Tls {
                 };
                 resolved = true;
                 match self.probe(&host, &addrs).await {
-                    Ok(p) => return signals(domain, &p, now()),
+                    Ok(p) if p.invalid.is_none() => return signals(domain, &p, now()),
+                    Ok(p) => {
+                        fallback.get_or_insert(p);
+                    }
                     Err(e) => {
                         debug!(%host, "TLS probe: {e}");
                         last_error = e;
                     }
                 }
+            }
+            if let Some(p) = fallback {
+                return signals(domain, &p, now());
             }
             if !resolved {
                 return vec![signal(
@@ -327,6 +370,7 @@ mod tests {
         Probe {
             host: "shop.fr".into(),
             invalid: invalid.map(Into::into),
+            name_mismatch: false,
             issuer: "Let's Encrypt".into(),
             organization: org.map(Into::into),
             not_before: 0,
@@ -350,6 +394,24 @@ mod tests {
                 .detail
                 .contains("10 days ago")
         );
+    }
+
+    #[test]
+    fn name_mismatch_has_no_weight() {
+        let mut p = probe(
+            &["reroute443.microsoft.com"],
+            Some("certificate not valid for name"),
+            Some("Microsoft Corporation"),
+        );
+        p.name_mismatch = true;
+        let s = signals("shop.fr", &p, 0);
+        assert_eq!(
+            s.iter()
+                .map(|s| (s.name.as_str(), s.weight))
+                .collect::<Vec<_>>(),
+            [("tls_cert_age_days", 0), ("tls_name_mismatch", 0)]
+        );
+        assert!(s[1].detail.contains("reroute443.microsoft.com"));
     }
 
     #[test]
