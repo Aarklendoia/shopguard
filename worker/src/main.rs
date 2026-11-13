@@ -7,6 +7,7 @@ mod analysis;
 mod api;
 mod config;
 mod domain;
+mod hosting;
 mod http;
 mod netguard;
 mod rdap;

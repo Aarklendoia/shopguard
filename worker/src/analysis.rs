@@ -66,10 +66,15 @@ pub trait Analyzer: Send + Sync {
 /// Analyzers enabled in this build, in the order they run.
 pub fn analyzers(client: reqwest::Client) -> Vec<Box<dyn Analyzer>> {
     let bootstrap = reqwest::Url::parse(crate::rdap::BOOTSTRAP_URL).expect("static URL");
-    vec![
-        Box::new(crate::rdap::Rdap::new(client, bootstrap)),
+    let mut list: Vec<Box<dyn Analyzer>> = vec![
+        Box::new(crate::rdap::Rdap::new(client.clone(), bootstrap)),
         Box::new(crate::tls::Tls::new()),
-    ]
+    ];
+    match crate::hosting::Hosting::new(client) {
+        Ok(h) => list.push(Box::new(h)),
+        Err(e) => warn!("hosting analyzer disabled: {e}"),
+    }
+    list
 }
 
 /// Background task: analyzes the domains received on `rx`, one at a time.

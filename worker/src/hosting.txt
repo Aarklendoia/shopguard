@@ -1,0 +1,13 @@
+# Hosting networks known to the hosting analyzer (src/hosting.rs), compiled into the
+# binary. One entry per line:
+#
+#   prefix <address/length> <weight> <label>   addresses of a platform or provider
+#   asn    <number>         <weight> <label>   every address announced by this network
+#
+# Weight 0 names the platform in the verdict without changing the score: a shop platform
+# is not suspicious by itself, it helps to read the other signals. Use a positive weight
+# for networks that keep hosting fake shops, with the feedback of confirmed cases (#12).
+# Networks run by criminals come from the DROP lists downloaded at run time, not from here.
+
+# custom domains of Shopify shops point to this range
+prefix 23.227.38.0/24 0 Shopify

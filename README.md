@@ -23,7 +23,8 @@ it can check right away.
 - **Privacy**: the plugin sends **domain names only**, never client addresses or timestamps.
   The worker queries public services about those domains (RDAP registries, Certificate
   Transparency logs, the French company directory) and fetches the sites themselves, from
-  the Docker host.
+  the Docker host. The hosting network is looked up by IP address only (Team Cymru DNS),
+  and the DROP lists of criminal networks are downloaded once a day.
 - **Observe first**: by default suspicious domains are only listed in the interface. Small
   legitimate shops are new domains on Shopify too: blocking only makes sense once the
   scoring has proven itself on your network.
@@ -43,6 +44,7 @@ worker/                          shopguard-worker (Rust)
   src/analysis.rs                scoring pipeline, Analyzer trait
   src/domain.rs                  registrable domain (Public Suffix List)
   src/http.rs                    HTTP client of the analyzers (HTTPS, public addresses only)
+  src/hosting.rs, hosting.txt    analyzer: hosting network, DROP lists, known platforms
   src/netguard.rs                which addresses the worker may connect to (SSRF guard)
   src/rdap.rs                    analyzer: domain registration age (RDAP)
   src/siret.rs                   SIREN/SIRET validation
