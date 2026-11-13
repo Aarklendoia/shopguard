@@ -63,9 +63,10 @@ pub trait Analyzer: Send + Sync {
     fn analyze<'a>(&'a self, domain: &'a str) -> BoxFuture<'a, Vec<Signal>>;
 }
 
-/// Analyzers enabled in this build. Each one is added by its own issue (see README).
-pub fn analyzers() -> Vec<Box<dyn Analyzer>> {
-    Vec::new()
+/// Analyzers enabled in this build, in the order they run.
+pub fn analyzers(client: reqwest::Client) -> Vec<Box<dyn Analyzer>> {
+    let bootstrap = reqwest::Url::parse(crate::rdap::BOOTSTRAP_URL).expect("static URL");
+    vec![Box::new(crate::rdap::Rdap::new(client, bootstrap))]
 }
 
 /// Background task: analyzes the domains received on `rx`, one at a time.

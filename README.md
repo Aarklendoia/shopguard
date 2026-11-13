@@ -42,7 +42,9 @@ worker/                          shopguard-worker (Rust)
   src/api.rs                     HTTP API used by the plugin
   src/analysis.rs                scoring pipeline, Analyzer trait
   src/domain.rs                  registrable domain (Public Suffix List)
+  src/http.rs                    HTTP client of the analyzers (HTTPS, public addresses only)
   src/netguard.rs                which addresses the worker may connect to (SSRF guard)
+  src/rdap.rs                    analyzer: domain registration age (RDAP)
   src/siret.rs                   SIREN/SIRET validation
   Dockerfile                     local build
   Dockerfile.release             release image (static binaries built by CI)

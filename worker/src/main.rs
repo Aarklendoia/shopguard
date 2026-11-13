@@ -7,9 +7,10 @@ mod analysis;
 mod api;
 mod config;
 mod domain;
-// used by the analyzers to come (TLS, page fetcher, SIRET check)
-#[allow(dead_code)]
+mod http;
 mod netguard;
+mod rdap;
+// used by the SIRET check to come
 #[allow(dead_code)]
 mod siret;
 mod store;
@@ -45,7 +46,11 @@ async fn main() -> ExitCode {
 
     let store = Arc::new(store::Store::default());
     let (tx, rx) = tokio::sync::mpsc::channel(cfg.queue);
-    tokio::spawn(analysis::run(rx, store.clone(), analysis::analyzers()));
+    tokio::spawn(analysis::run(
+        rx,
+        store.clone(),
+        analysis::analyzers(http::client()),
+    ));
 
     let state = api::AppState {
         store,
