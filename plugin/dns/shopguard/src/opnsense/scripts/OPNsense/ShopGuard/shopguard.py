@@ -118,8 +118,8 @@ def unbound_names(since):
     NOERROR), not answered from local-data (source 2: host overrides of the LAN).
     """
     if not os.path.exists(UNBOUND_STATS) or not os.path.exists(UNBOUND_DB):
-        raise LookupError('Unbound statistics are disabled: enable them in Reporting -> Settings '
-                          '(Unbound DNS reporting), ShopGuard reads the domains from there.')
+        raise LookupError('Unbound statistics are disabled: enable them in Reporting -> Unbound DNS, '
+                          'Settings tab. ShopGuard reads the domains from there.')
     if SITE_PYTHON not in sys.path:
         sys.path.append(SITE_PYTHON)
     from duckdb_helper import DbConnection
