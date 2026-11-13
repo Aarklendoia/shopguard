@@ -120,9 +120,18 @@ since the last run that it has not sent yet. It reads them from the database of
 **Reporting → Unbound DNS**, so Unbound statistics must be enabled (Reporting → Settings);
 no query log is needed. Only the `domain` column is read: never the client address.
 Blocked queries, failed lookups, LAN host overrides and local names (`.lan`, `.home`,
-`.arpa`, the router's own domain…) are left out. State: `/var/db/shopguard/`. Installation from a signed package repository,
-with updates through the OPNsense firmware updates, comes with the packaging issue (same
-mechanism as [apu-firmware](https://github.com/Aarklendoia/apu-firmware)).
+`.arpa`, the router's own domain…) are left out. State: `/var/db/shopguard/`.
+
+Install it once, as root on the router: [`plugin/install.sh`](plugin/install.sh) adds the
+signed package repository (GitHub Pages of this repository) and installs the plugin. It is
+then listed under System → Firmware → Plugins, and its updates come with the OPNsense
+updates.
+
+```sh
+fetch -o - https://raw.githubusercontent.com/Aarklendoia/shopguard/main/plugin/install.sh | sh
+```
+
+Backend tests, against a fake worker:
 
 ```sh
 python3 -I plugin/tests/test_shopguard.py plugin/dns/shopguard/src/opnsense/scripts/OPNsense/ShopGuard/shopguard.py

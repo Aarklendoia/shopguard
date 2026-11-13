@@ -6,7 +6,7 @@ name: Plugin
 on:
   push:
     branches: [main]
-    paths: ['plugin/**', '.github/workflows/plugin.yml']
+    paths: ['plugin/**', '.github/workflows/plugin.yml', '.github/workflows/plugin-package.yml']
   pull_request:
 
 permissions:
@@ -38,7 +38,7 @@ jobs:
             exit 0
           fi
           files=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename')
-          if printf '%s\n' "$files" | grep -Eq '^(plugin/|\.github/workflows/plugin\.yml$)'; then
+          if printf '%s\n' "$files" | grep -Eq '^(plugin/|\.github/workflows/plugin(-package)?\.yml$)'; then
             echo "plugin=true" >> "$GITHUB_OUTPUT"
           else
             echo "plugin=false" >> "$GITHUB_OUTPUT"
@@ -61,15 +61,28 @@ jobs:
           sudo apt-get install -y -qq libxml2-utils >/dev/null
           find plugin -name '*.xml' -print0 | xargs -0 xmllint --noout
 
+      - name: Shell
+        run: shellcheck --severity=warning plugin/install.sh
+
       - name: Python
         run: pipx run flake8 --max-line-length=120 plugin
 
       - name: Backend tests
         run: python3 -I plugin/tests/test_shopguard.py plugin/dns/shopguard/src/opnsense/scripts/OPNsense/ShopGuard/shopguard.py
 
+  # FreeBSD package, signed repository and install.sh (several minutes)
+  package:
+    needs: [changes, lint-test]
+    if: needs.changes.outputs.plugin == 'true'
+    permissions:
+      contents: read
+    uses: ./.github/workflows/plugin-package.yml
+    secrets:
+      PKG_SIGNING_KEY: ${{ secrets.PKG_SIGNING_KEY }}
+
   plugin-ok:
     if: always()
-    needs: [changes, lint-test]
+    needs: [changes, lint-test, package]
     runs-on: ubuntu-latest
     defaults:
       run:
