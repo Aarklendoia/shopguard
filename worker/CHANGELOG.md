@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/Aarklendoia/shopguard/compare/worker-v0.3.0...worker-v0.3.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **worker:** a certificate for other names is not an invalid certificate ([#40](https://github.com/Aarklendoia/shopguard/issues/40)) ([02e4877](https://github.com/Aarklendoia/shopguard/commit/02e4877cf753ff218d4a2fa1342684c4377a22fe))
+
 ## [0.3.0](https://github.com/Aarklendoia/shopguard/compare/worker-v0.2.0...worker-v0.3.0) (2026-11-13)
 
 
