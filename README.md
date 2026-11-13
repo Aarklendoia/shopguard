@@ -75,6 +75,15 @@ Updating the image is up to you (Watchtower, Renovate on your compose files, or 
 `ghcr.io/aarklendoia/shopguard-worker` is tagged `X.Y.Z`, `X.Y` and `latest`, and signed
 with cosign (keyless, GitHub Actions identity of this repository).
 
+The image (about 2 MB, `linux/amd64` and `linux/arm64`) carries an SBOM and build
+provenance. To check that an image was built by this repository's release workflow:
+
+```sh
+cosign verify ghcr.io/aarklendoia/shopguard-worker:<version> \
+  --certificate-identity-regexp '^https://github.com/Aarklendoia/shopguard/\.github/workflows/release\.yml@refs/heads/main$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
 ### API
 
 | Method | Path                    | Purpose                                         |
