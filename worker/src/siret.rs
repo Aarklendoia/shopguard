@@ -23,7 +23,7 @@ fn luhn(digits: &[u8]) -> bool {
             }
         })
         .sum();
-    sum % 10 == 0
+    sum.is_multiple_of(10)
 }
 
 /// Digits of `s` when it is exactly `len` digits once spaces, dots and dashes are removed.

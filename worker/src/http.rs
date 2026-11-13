@@ -27,20 +27,29 @@ pub const USER_AGENT: &str = concat!(
 
 const MAX_REDIRECTS: usize = 3;
 
+/// Addresses of `host` that pass [`netguard::is_public`], with `port`. Every connection
+/// of the worker to a name goes through this function (or [`client`], which uses it).
+pub async fn resolve_public(host: &str, port: u16) -> std::io::Result<Vec<SocketAddr>> {
+    let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host, port))
+        .await?
+        .filter(|a| netguard::is_public(a.ip()))
+        .collect();
+    if addrs.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::AddrNotAvailable,
+            format!("{host}: no public address"),
+        ));
+    }
+    Ok(addrs)
+}
+
 /// Resolves with the system resolver and keeps only public addresses.
 struct PublicResolver;
 
 impl Resolve for PublicResolver {
     fn resolve(&self, name: Name) -> Resolving {
         Box::pin(async move {
-            let host = name.as_str().to_owned();
-            let addrs: Vec<SocketAddr> = tokio::net::lookup_host((host.as_str(), 0))
-                .await?
-                .filter(|a| netguard::is_public(a.ip()))
-                .collect();
-            if addrs.is_empty() {
-                return Err(format!("{host}: no public address").into());
-            }
+            let addrs = resolve_public(name.as_str(), 0).await?;
             Ok(Box::new(addrs.into_iter()) as Addrs)
         })
     }
@@ -65,14 +74,22 @@ pub fn checked_url(url: &str) -> Option<Url> {
     Url::parse(url).ok().filter(allowed)
 }
 
-fn tls() -> rustls::ClientConfig {
-    let roots = rustls::RootCertStore {
+/// The Mozilla CA list compiled into the binary.
+pub fn roots() -> Arc<rustls::RootCertStore> {
+    Arc::new(rustls::RootCertStore {
         roots: webpki_roots::TLS_SERVER_ROOTS.to_vec(),
-    };
-    rustls::ClientConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+    })
+}
+
+pub fn crypto() -> Arc<rustls::crypto::CryptoProvider> {
+    Arc::new(rustls::crypto::ring::default_provider())
+}
+
+fn tls() -> rustls::ClientConfig {
+    rustls::ClientConfig::builder_with_provider(crypto())
         .with_safe_default_protocol_versions()
         .expect("ring supports the default TLS versions")
-        .with_root_certificates(roots)
+        .with_root_certificates(roots())
         .with_no_client_auth()
 }
 

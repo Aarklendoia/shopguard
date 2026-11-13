@@ -14,6 +14,7 @@ mod rdap;
 #[allow(dead_code)]
 mod siret;
 mod store;
+mod tls;
 
 use std::process::ExitCode;
 use std::sync::Arc;
