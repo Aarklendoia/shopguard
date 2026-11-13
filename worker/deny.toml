@@ -1,0 +1,19 @@
+# cargo deny check: advisories (RustSec), licenses, duplicate or unknown sources
+
+[advisories]
+version = 2
+yanked = "deny"
+
+[licenses]
+version = 2
+allow = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "Unicode-3.0", "Zlib", "MPL-2.0"]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# OpenSSL must never come in: TLS goes through rustls
+deny = [{ name = "openssl-sys" }, { name = "native-tls" }]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

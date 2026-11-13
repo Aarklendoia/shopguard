@@ -1,0 +1,20 @@
+{
+    // the worker crate lives in worker/, not at the repository root
+    "rust-analyzer.linkedProjects": ["worker/Cargo.toml"],
+    "rust-analyzer.check.command": "clippy",
+    "[rust]": {
+        "editor.formatOnSave": true
+    },
+    // Python: OPNsense style (single quotes), no automatic formatting
+    "[python]": {
+        "editor.defaultFormatter": null,
+        "editor.formatOnSave": false
+    },
+    "flake8.args": ["--max-line-length=120"],
+    "yaml.schemas": {
+        "https://json.schemastore.org/github-workflow.json": ".github/workflows/*.yml"
+    },
+    "files.associations": {
+        "*.volt": "twig"
+    }
+}

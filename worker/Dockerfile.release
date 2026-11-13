@@ -1,0 +1,11 @@
+# Release image: an empty base and the static binary built by CI for the target
+# architecture (dist/amd64/shopguard-worker, dist/arm64/shopguard-worker).
+# No shell, no libc, no package manager: the only code is ours and its Rust dependencies.
+
+FROM scratch
+ARG TARGETARCH
+COPY dist/${TARGETARCH}/shopguard-worker /shopguard-worker
+USER 65534:65534
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s CMD ["/shopguard-worker", "healthcheck"]
+ENTRYPOINT ["/shopguard-worker"]

@@ -1,0 +1,31 @@
+name: Plugin
+
+# Lint and backend tests of the OPNsense plugin. Packaging and the signed pkg repository
+# come with their own issue (same pipeline as Aarklendoia/apu-firmware).
+
+on:
+  push:
+    branches: [main]
+    paths: ['plugin/**', '.github/workflows/plugin.yml']
+  pull_request:
+    paths: ['plugin/**', '.github/workflows/plugin.yml']
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: PHP syntax
+        run: find plugin -name '*.php' -o -name '*.inc' | xargs -r -n1 php -l
+
+      - name: XML
+        run: |
+          sudo apt-get install -y -qq libxml2-utils >/dev/null
+          find plugin -name '*.xml' -print0 | xargs -0 xmllint --noout
+
+      - name: Python
+        run: pipx run flake8 --max-line-length=120 plugin
+
+      - name: Backend tests
+        run: python3 -I plugin/tests/test_shopguard.py plugin/dns/shopguard/src/opnsense/scripts/OPNsense/ShopGuard/shopguard.py

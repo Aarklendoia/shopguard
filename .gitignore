@@ -1,0 +1,7 @@
+/worker/target/
+/dist/
+__pycache__/
+*.pyc
+plugin/dns/shopguard/src/share/locale/
+# files to move by hand, then delete (see README of the folder)
+/_a-deplacer/

@@ -1,0 +1,20 @@
+name: Audit
+
+# Weekly RustSec check of the worker dependencies. A failure means a released image may
+# need a fix release: update the dependency (Dependabot usually opens the PR) and merge
+# a "fix(worker): …" PR so release-please publishes a new image.
+
+on:
+  schedule:
+    - cron: '17 5 * * 1'
+  workflow_dispatch:
+
+jobs:
+  advisories:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          manifest-path: worker/Cargo.toml
+          command: check advisories

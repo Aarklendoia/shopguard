@@ -1,0 +1,94 @@
+name: Release
+
+# On main, release-please keeps one release PR per component up to date from the
+# Conventional Commits that touch it. Merging the worker one tags worker-vX.Y.Z and
+# creates the release; the image is then built and pushed to GHCR:
+#   ghcr.io/<owner>/shopguard-worker:X.Y.Z, :X.Y, :latest
+# Images are only rebuilt on a release: no scheduled rebuilds (the image holds nothing
+# but our static binary, see audit.yml for dependency advisories).
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      worker: ${{ steps.rp.outputs['worker--release_created'] }}
+      worker_version: ${{ steps.rp.outputs['worker--version'] }}
+      plugin: ${{ steps.rp.outputs['plugin/dns/shopguard--release_created'] }}
+    steps:
+      - id: rp
+        uses: googleapis/release-please-action@v5
+        with:
+          # a PR opened with GITHUB_TOKEN does not trigger the required checks
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  worker-image:
+    needs: release-please
+    if: needs.release-please.outputs.worker == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write     # keyless cosign signature
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl,aarch64-unknown-linux-musl
+      - run: pipx install cargo-zigbuild
+
+      - name: Static binaries
+        working-directory: worker
+        run: |
+          cargo zigbuild --locked --release --target x86_64-unknown-linux-musl
+          cargo zigbuild --locked --release --target aarch64-unknown-linux-musl
+          mkdir -p dist/amd64 dist/arm64
+          cp target/x86_64-unknown-linux-musl/release/shopguard-worker dist/amd64/
+          cp target/aarch64-unknown-linux-musl/release/shopguard-worker dist/arm64/
+
+      - id: img
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/shopguard-worker" >> "$GITHUB_OUTPUT"
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.img.outputs.name }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.release-please.outputs.worker_version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-please.outputs.worker_version }}
+            type=raw,value=latest
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      # COPY only, no RUN: both platforms build without emulation
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: worker
+          file: worker/Dockerfile.release
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: true
+          sbom: true
+
+      - uses: sigstore/cosign-installer@v3
+      - name: Sign
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          IMAGE: ${{ steps.img.outputs.name }}
+        run: cosign sign --yes "$IMAGE@$DIGEST"

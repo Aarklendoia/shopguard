@@ -1,0 +1,36 @@
+<model>
+    <mount>//OPNsense/shopguard</mount>
+    <version>0.1.0</version>
+    <description>Fake online shop detection</description>
+    <items>
+        <general>
+            <enabled type="BooleanField">
+                <Default>0</Default>
+                <Required>Y</Required>
+            </enabled>
+            <worker_url type="TextField">
+                <Mask>/^https?:\/\/(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]+)(:[0-9]{1,5})?\/?$/</Mask>
+                <ValidationMessage>Use the worker base URL, e.g. http://htpc.lan:8080 or http://[2001:db8::10]:8080.</ValidationMessage>
+            </worker_url>
+            <token type="TextField">
+                <Mask>/^[A-Za-z0-9_.~+\/=-]{32,}$/</Mask>
+                <ValidationMessage>The token is the SHOPGUARD_TOKEN of the worker: at least 32 characters.</ValidationMessage>
+            </token>
+            <mode type="OptionField">
+                <Default>observe</Default>
+                <Required>Y</Required>
+                <OptionValues>
+                    <observe>Observe only</observe>
+                    <block>Block in Unbound</block>
+                </OptionValues>
+            </mode>
+            <threshold type="IntegerField">
+                <Default>70</Default>
+                <Required>Y</Required>
+                <MinimumValue>1</MinimumValue>
+                <MaximumValue>100</MaximumValue>
+                <ValidationMessage>Choose a score from 1 to 100.</ValidationMessage>
+            </threshold>
+        </general>
+    </items>
+</model>

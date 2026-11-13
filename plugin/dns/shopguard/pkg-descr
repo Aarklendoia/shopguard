@@ -1,0 +1,13 @@
+Sends the domains resolved by Unbound DNS (names only, never client
+addresses) to a shopguard-worker container on the local network, which
+scores them for signs of fake online shops: domain age and history,
+certificate, hosting, legal notice and company identifiers, page content.
+Domains above the chosen score are shown in the interface and, in
+blocking mode, added to the Unbound blocklist.
+
+Plugin Changelog
+================
+
+0.1
+
+* Initial release

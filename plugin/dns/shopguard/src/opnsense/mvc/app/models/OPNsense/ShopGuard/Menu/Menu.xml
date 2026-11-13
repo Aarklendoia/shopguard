@@ -1,0 +1,5 @@
+<menu>
+    <Services>
+        <ShopGuard VisibleName="ShopGuard" cssClass="fa fa-shield fa-fw" url="/ui/shopguard"/>
+    </Services>
+</menu>

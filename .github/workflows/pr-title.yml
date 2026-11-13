@@ -1,0 +1,23 @@
+name: PR title
+
+# Squash merges use the PR title as commit message, and release-please reads those
+# messages to version the worker and the plugin: titles must follow Conventional Commits,
+# with the scope "worker" or "plugin" for changes to release.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  conventional:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the title
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          types='feat|fix|perf|refactor|docs|test|build|ci|chore|revert|style'
+          if ! printf '%s\n' "$TITLE" | grep -Eq "^($types)(\([a-z0-9-]+\))?!?: .+"; then
+            echo "::error::\"$TITLE\" is not a Conventional Commits title, e.g. \"feat(worker): …\" or \"fix(plugin): …\""
+            exit 1
+          fi

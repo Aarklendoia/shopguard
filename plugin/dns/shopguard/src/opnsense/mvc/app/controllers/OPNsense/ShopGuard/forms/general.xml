@@ -1,0 +1,33 @@
+<form>
+    <field>
+        <id>shopguard.general.enabled</id>
+        <label>Enable</label>
+        <type>checkbox</type>
+        <help>Send the domains resolved by Unbound to the worker. Only domain names are sent, never client addresses.</help>
+    </field>
+    <field>
+        <id>shopguard.general.worker_url</id>
+        <label>Worker URL</label>
+        <type>text</type>
+        <hint>http://htpc.lan:8080</hint>
+        <help>Base URL of the shopguard-worker container.</help>
+    </field>
+    <field>
+        <id>shopguard.general.token</id>
+        <label>Token</label>
+        <type>password</type>
+        <help>SHOPGUARD_TOKEN of the worker.</help>
+    </field>
+    <field>
+        <id>shopguard.general.mode</id>
+        <label>Mode</label>
+        <type>dropdown</type>
+        <help>Observe only: suspicious domains are listed here. Block: they are also added to the Unbound blocklist.</help>
+    </field>
+    <field>
+        <id>shopguard.general.threshold</id>
+        <label>Score threshold</label>
+        <type>text</type>
+        <help>Domains scoring at least this value (1 to 100) are considered fake shops.</help>
+    </field>
+</form>

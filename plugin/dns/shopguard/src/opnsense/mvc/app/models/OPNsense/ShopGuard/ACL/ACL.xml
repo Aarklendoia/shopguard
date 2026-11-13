@@ -1,0 +1,9 @@
+<acl>
+    <page-services-shopguard>
+        <name>Services: ShopGuard</name>
+        <patterns>
+            <pattern>ui/shopguard/*</pattern>
+            <pattern>api/shopguard/*</pattern>
+        </patterns>
+    </page-services-shopguard>
+</acl>

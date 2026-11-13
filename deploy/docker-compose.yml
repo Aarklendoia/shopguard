@@ -1,0 +1,22 @@
+# Example deployment of the worker on a Docker host of the local network.
+#   openssl rand -hex 32 > .shopguard-token   # the same token goes into the plugin settings
+#   SHOPGUARD_TOKEN=$(cat .shopguard-token) docker compose up -d
+
+services:
+  shopguard-worker:
+    image: ghcr.io/aarklendoia/shopguard-worker:latest
+    container_name: shopguard-worker
+    restart: unless-stopped
+    environment:
+      SHOPGUARD_TOKEN: ${SHOPGUARD_TOKEN:?set SHOPGUARD_TOKEN}
+      # SHOPGUARD_THRESHOLD: "70"
+      # SHOPGUARD_LOG: "info,shopguard_worker=debug"
+    ports:
+      - "8080:8080"
+    # nothing to write, nothing to gain
+    read_only: true
+    user: "65534:65534"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
