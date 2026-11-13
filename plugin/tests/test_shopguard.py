@@ -54,6 +54,17 @@ class FakeWorker(BaseHTTPRequestHandler):
             self.send_response(401)
             self.end_headers()
             return
+        if self.path.startswith('/v1/verdicts'):
+            rows = [{'domain': 'fake-shop.fr', 'score': 85, 'checked_at': 1, 'signals': [], 'extra': 1},
+                    {'domain': 'shop.example.com', 'score': 40, 'checked_at': 2, 'signals': []},
+                    {'domain': 'apple.com', 'score': 0, 'checked_at': 3, 'signals': []}]
+            body = json.dumps(rows).encode()
+            self.send_response(200)
+            self.send_header('Content-Type', 'application/json')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if self.path == '/v1/status':
             body = json.dumps({'version': '0.1.0', 'pending': 3, 'threshold': 70}).encode()
             self.send_response(200)
@@ -110,6 +121,16 @@ class Tests(unittest.TestCase):
         s = sg.status(self.cfg(self.url, 'x' * 32))
         self.assertEqual(s['status'], 'error')
         self.assertIn('token', s['message'])
+
+    def test_verdicts_from_a_worker_without_paging(self):
+        v = sg.verdicts(self.cfg(self.url), min_score=1, offset=0, limit=1, search='SHOP')
+        self.assertEqual((v['status'], v['total']), ('ok', 2))
+        self.assertEqual(v['rows'], [{'domain': 'fake-shop.fr', 'score': 85, 'checked_at': 1, 'signals': []}])
+        self.assertEqual(sg.verdicts(self.cfg(self.url), 0, 2, 50)['rows'][0]['domain'], 'apple.com')
+
+    def test_verdicts_rejects_odd_search_and_bad_token(self):
+        self.assertEqual(sg.verdicts(self.cfg(self.url), search="x' OR 1")['status'], 'error')
+        self.assertIn('token', sg.verdicts(self.cfg(self.url, 'x' * 32))['message'])
 
     def test_status_unreachable(self):
         s = sg.status(self.cfg('http://127.0.0.1:9'))

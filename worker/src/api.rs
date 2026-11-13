@@ -5,9 +5,13 @@
 //! | GET    | `/healthz`              | no   | liveness (container health check)               |
 //! | GET    | `/v1/status`            | yes  | version, queue length                           |
 //! | POST   | `/v1/domains`           | yes  | submit domains resolved by Unbound              |
-//! | GET    | `/v1/verdicts`          | yes  | verdicts, `?min_score=` (default 0)             |
+//! | GET    | `/v1/verdicts`          | yes  | verdicts, highest score first (see below)       |
 //! | GET    | `/v1/verdicts/{domain}` | yes  | one verdict                                     |
 //! | GET    | `/v1/blocklist`         | yes  | domains scoring at least the threshold, as text |
+//!
+//! `/v1/verdicts` takes `min_score` (default 0), `q` (domain contains, case-insensitive),
+//! `offset` (default 0) and `limit` (default: all, at most 1000 when given). The body is
+//! the array of verdicts of the page; `X-Total-Count` gives the number matching the filter.
 //!
 //! Authenticated routes expect `Authorization: Bearer <SHOPGUARD_TOKEN>`.
 //! The plugin only ever sends domain names: no client address, no timestamp.
@@ -141,17 +145,37 @@ async fn submit(
     Ok(Json(res))
 }
 
+/// Most verdicts in one page when `limit` is given.
+pub const MAX_PAGE: usize = 1000;
+
 #[derive(Deserialize)]
 struct VerdictQuery {
     #[serde(default)]
     min_score: u8,
+    /// Part of the domain name.
+    #[serde(default)]
+    q: String,
+    #[serde(default)]
+    offset: usize,
+    limit: Option<usize>,
 }
 
 async fn verdicts(
     State(state): State<AppState>,
     Query(q): Query<VerdictQuery>,
 ) -> impl IntoResponse {
-    Json(state.store.verdicts(q.min_score).await)
+    let needle = q.q.trim().to_ascii_lowercase();
+    let all: Vec<_> = state
+        .store
+        .verdicts(q.min_score)
+        .await
+        .into_iter()
+        .filter(|v| needle.is_empty() || v.domain.contains(&needle))
+        .collect();
+    let total = all.len();
+    let limit = q.limit.map_or(usize::MAX, |l| l.min(MAX_PAGE));
+    let page: Vec<_> = all.into_iter().skip(q.offset).take(limit).collect();
+    ([("x-total-count", total.to_string())], Json(page))
 }
 
 async fn verdict(State(state): State<AppState>, Path(name): Path<String>) -> Response {
@@ -320,5 +344,53 @@ mod tests {
             .await
             .unwrap();
         assert!(text(r).await.contains(r#""score":90"#));
+    }
+
+    #[tokio::test]
+    async fn verdicts_are_filtered_and_paged() {
+        let (app, store, _rx) = app(10);
+        let sig = |w| Signal {
+            source: "t".into(),
+            name: "t".into(),
+            weight: w,
+            detail: String::new(),
+        };
+        for (d, w) in [
+            ("a-shop.fr", 90),
+            ("b-shop.fr", 80),
+            ("c.fr", 60),
+            ("shopx.com", 10),
+        ] {
+            store.insert(Verdict::new(d.into(), vec![sig(w)])).await;
+        }
+        let get = |uri: &'static str| {
+            let app = app.clone();
+            async move {
+                let r = app
+                    .oneshot(req("GET", uri, Some(TOKEN), None))
+                    .await
+                    .unwrap();
+                let total = r.headers()["x-total-count"].to_str().unwrap().to_owned();
+                let body: Vec<Verdict> = serde_json::from_str(&text(r).await).unwrap();
+                (
+                    total,
+                    body.into_iter().map(|v| v.domain).collect::<Vec<_>>(),
+                )
+            }
+        };
+        // compatible with the plain call: everything, highest score first
+        assert_eq!(
+            get("/v1/verdicts").await.1,
+            ["a-shop.fr", "b-shop.fr", "c.fr", "shopx.com"]
+        );
+        assert_eq!(
+            get("/v1/verdicts?q=SHOP&min_score=50").await,
+            ("2".into(), vec!["a-shop.fr".into(), "b-shop.fr".into()])
+        );
+        assert_eq!(
+            get("/v1/verdicts?offset=1&limit=2").await,
+            ("4".into(), vec!["b-shop.fr".into(), "c.fr".into()])
+        );
+        assert_eq!(get("/v1/verdicts?offset=9").await, ("4".into(), vec![]));
     }
 }

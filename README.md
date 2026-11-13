@@ -95,11 +95,14 @@ cosign verify ghcr.io/aarklendoia/shopguard-worker:<version> \
 | GET    | `/healthz`              | liveness, no token                              |
 | GET    | `/v1/status`            | version, domains known and not analyzed yet     |
 | POST   | `/v1/domains`           | `{"domains": [...]}`, at most 5000 per request  |
-| GET    | `/v1/verdicts`          | verdicts, `?min_score=`                         |
+| GET    | `/v1/verdicts`          | verdicts, highest score first (see below)       |
 | GET    | `/v1/verdicts/{domain}` | one verdict, with its signals                   |
 | GET    | `/v1/blocklist`         | domains scoring at least the threshold, as text |
 
 Every `/v1` route expects `Authorization: Bearer <SHOPGUARD_TOKEN>`.
+
+`/v1/verdicts` takes `min_score`, `q` (part of the domain), `offset` and `limit` (≤ 1000);
+the `X-Total-Count` header gives the number of verdicts matching the filter.
 
 ### Develop
 
@@ -112,8 +115,10 @@ SHOPGUARD_TOKEN=dev-token-0123456789abcdef0123456789 SHOPGUARD_LOG=debug cargo r
 
 ## Plugin
 
-`os-shopguard` adds **Services → ShopGuard**: worker URL and token, mode (observe or
-block), score threshold, worker status.
+`os-shopguard` adds **Services → ShopGuard**: the list of verdicts (score, signals and
+their details, search and minimum score filter) and the settings: worker URL and token,
+mode (observe or block), score threshold, worker status. The page goes through the
+router (configd), never from the browser to the worker: the token stays on the router.
 
 Every 5 minutes while enabled, the plugin sends the worker the names Unbound resolved
 since the last run that it has not sent yet. It reads them from the database of
