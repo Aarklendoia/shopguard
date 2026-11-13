@@ -29,6 +29,8 @@
 
         shopguard.py status     worker reachability and last collection, as JSON
         shopguard.py collect    send the worker the new domains resolved by Unbound (cron)
+        shopguard.py verdicts <min_score> <offset> <limit> [search]
+                                one page of verdicts, highest score first, as JSON
 
     Only domain names are ever sent to the worker, never client addresses.
 
@@ -46,6 +48,7 @@ import sys
 import syslog
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 
@@ -67,6 +70,9 @@ OVERLAP = 60
 # suffixes of names that are not public websites
 LOCAL_SUFFIXES = ('.arpa', '.local', '.lan', '.home', '.internal', '.localdomain', '.intranet', '.corp')
 LABEL = re.compile(r'^[a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?$')
+# search in the verdict list: part of a domain name
+SEARCH = re.compile(r'^[a-z0-9_.-]{0,253}$')
+MAX_PAGE = 1000
 
 
 def settings(path=CONFIG):
@@ -165,6 +171,44 @@ def call(cfg, path, payload=None):
         req.add_header('Content-Type', 'application/json')
     with urllib.request.urlopen(req, data=data, timeout=TIMEOUT) as resp:
         return json.load(resp)
+
+
+def verdicts(cfg, min_score=0, offset=0, limit=50, search=''):
+    """One page of verdicts: {'status', 'total', 'rows'}.
+
+    Workers before 0.3 return every verdict without X-Total-Count: the page is cut here.
+    """
+    if not cfg['worker_url']:
+        return {'status': 'error', 'message': 'No worker URL configured.', 'total': 0, 'rows': []}
+    min_score = max(0, min(100, int(min_score)))
+    offset = max(0, int(offset))
+    limit = max(1, min(MAX_PAGE, int(limit)))
+    search = search.strip().lower()
+    if not SEARCH.match(search):
+        return {'status': 'error', 'message': 'Search for part of a domain name.', 'total': 0, 'rows': []}
+    query = urllib.parse.urlencode({'min_score': min_score, 'q': search, 'offset': offset, 'limit': limit})
+    req = urllib.request.Request(cfg['worker_url'] + '/v1/verdicts?' + query)
+    req.add_header('Authorization', 'Bearer ' + cfg['token'])
+    req.add_header('Accept', 'application/json')
+    try:
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
+            rows = json.load(resp)
+            total = resp.headers.get('X-Total-Count')
+    except urllib.error.HTTPError as e:
+        message = 'The worker refused the token.' if e.code == 401 else 'Worker error: HTTP %d.' % e.code
+        return {'status': 'error', 'message': message, 'total': 0, 'rows': []}
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        return {'status': 'error', 'message': 'Worker unreachable: %s' % getattr(e, 'reason', e),
+                'total': 0, 'rows': []}
+    if not isinstance(rows, list):
+        return {'status': 'error', 'message': 'Unexpected answer from the worker.', 'total': 0, 'rows': []}
+    if total is None:
+        # older worker: no paging, no search
+        rows = [r for r in rows if search in str(r.get('domain', '')) and int(r.get('score', 0)) >= min_score]
+        total = len(rows)
+        rows = rows[offset:offset + limit]
+    keep = ('domain', 'score', 'checked_at', 'signals')
+    return {'status': 'ok', 'total': int(total), 'rows': [{k: r.get(k) for k in keep} for r in rows]}
 
 
 def status(cfg):
@@ -267,14 +311,26 @@ def last_collect(state_dir=STATE_DIR):
 
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else ''
-    if cmd not in ('status', 'collect'):
-        print('usage: shopguard.py status|collect', file=sys.stderr)
+    if cmd not in ('status', 'collect', 'verdicts'):
+        print('usage: shopguard.py status|collect|verdicts', file=sys.stderr)
         return 2
     try:
         cfg = settings()
     except (OSError, ET.ParseError) as e:
         print(json.dumps({'status': 'error', 'message': 'Cannot read the configuration: %s' % e}))
         return 1
+    if cmd == 'verdicts':
+        try:
+            nums = [int(a) for a in argv[2:5]]
+        except ValueError:
+            nums = []
+        if len(nums) != 3:
+            print(json.dumps({'status': 'error', 'message': 'usage: verdicts <min_score> <offset> <limit> [search]',
+                              'total': 0, 'rows': []}))
+            return 2
+        out = verdicts(cfg, *nums, search=argv[5] if len(argv) > 5 else '')
+        print(json.dumps(out))
+        return 0 if out['status'] == 'ok' else 1
     if cmd == 'status':
         out = status(cfg)
         out['collect'] = last_collect()

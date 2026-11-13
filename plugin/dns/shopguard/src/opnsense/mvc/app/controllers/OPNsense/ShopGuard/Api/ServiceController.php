@@ -54,4 +54,42 @@ class ServiceController extends ApiControllerBase
         $out = trim((new Backend())->configdRun('cron restart'));
         return ['status' => stripos($out, 'error') === false ? 'ok' : 'failed'];
     }
+
+    /**
+     * one page of verdicts for the bootgrid, from the worker through configd (the token stays
+     * on the router): current, rowCount, searchPhrase and min_score from the request
+     */
+    public function verdictsAction()
+    {
+        if (!$this->request->isPost()) {
+            return ['status' => 'failed'];
+        }
+        $rowCount = (int)$this->request->getPost('rowCount', 'int', 50);
+        $rowCount = ($rowCount < 1 || $rowCount > 1000) ? 1000 : $rowCount;
+        $current = max(1, (int)$this->request->getPost('current', 'int', 1));
+        $minScore = min(100, max(0, (int)$this->request->getPost('min_score', 'int', 0)));
+        $search = strtolower(trim((string)$this->request->getPost('searchPhrase', 'string', '')));
+        if (!preg_match('/^[a-z0-9_.-]{0,253}$/', $search)) {
+            $search = '';
+        }
+        $response = (new Backend())->configdpRun('shopguard verdicts', [
+            (string)$minScore,
+            (string)(($current - 1) * $rowCount),
+            (string)$rowCount,
+            $search,
+        ]);
+        $data = json_decode(trim($response), true);
+        if (!is_array($data) || ($data['status'] ?? '') !== 'ok') {
+            return [
+                'rows' => [], 'rowCount' => 0, 'total' => 0, 'current' => 1,
+                'message' => is_array($data) ? ($data['message'] ?? '') : trim($response),
+            ];
+        }
+        return [
+            'rows' => $data['rows'],
+            'rowCount' => count($data['rows']),
+            'total' => (int)$data['total'],
+            'current' => $current,
+        ];
+    }
 }
