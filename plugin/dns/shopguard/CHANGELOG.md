@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1](https://github.com/Aarklendoia/shopguard/compare/plugin-v0.2.0...plugin-v0.2.1) (2026-11-13)
+
+
+### Bug Fixes
+
+* **plugin:** point to the right place to enable Unbound statistics ([#35](https://github.com/Aarklendoia/shopguard/issues/35)) ([fff9a5b](https://github.com/Aarklendoia/shopguard/commit/fff9a5b9c65936c6fe14225830103f75d215458e))
+
 ## [0.2.0](https://github.com/Aarklendoia/shopguard/compare/plugin-v0.1.0...plugin-v0.2.0) (2026-11-13)
 
 
