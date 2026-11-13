@@ -8,13 +8,45 @@ on:
     branches: [main]
     paths: ['plugin/**', '.github/workflows/plugin.yml']
   pull_request:
-    paths: ['plugin/**', '.github/workflows/plugin.yml']
 
 permissions:
   contents: read
 
 jobs:
+  # Required checks cannot be path-filtered (a check that never runs blocks the PR): the
+  # workflow runs on every PR, this job tells whether the plugin changed, and plugin-ok below
+  # is the single required check.
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    defaults:
+      run:
+        working-directory: .
+    outputs:
+      plugin: ${{ steps.files.outputs.plugin }}
+    steps:
+      - id: files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            echo "plugin=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(gh api "repos/$REPO/pulls/$PR/files" --paginate --jq '.[].filename')
+          if printf '%s\n' "$files" | grep -Eq '^(plugin/|\.github/workflows/plugin\.yml$)'; then
+            echo "plugin=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "plugin=false" >> "$GITHUB_OUTPUT"
+          fi
+
   lint-test:
+    needs: changes
+    if: needs.changes.outputs.plugin == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -34,3 +66,22 @@ jobs:
 
       - name: Backend tests
         run: python3 -I plugin/tests/test_shopguard.py plugin/dns/shopguard/src/opnsense/scripts/OPNsense/ShopGuard/shopguard.py
+
+  plugin-ok:
+    if: always()
+    needs: [changes, lint-test]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - name: All plugin jobs passed or were not needed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for r in $RESULTS; do
+            case "$r" in
+              success|skipped) ;;
+              *) echo "::error::a plugin job ended with: $r"; exit 1 ;;
+            esac
+          done
