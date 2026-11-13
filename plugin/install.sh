@@ -96,5 +96,5 @@ service configd restart
 
 echo
 echo "$PKG ${installed:+$installed -> }$version installed from $NAME."
-echo "Configure it under Services > ShopGuard, and enable the Unbound statistics"
-echo "(Reporting > Settings) it reads the domains from. Updates come with the OPNsense updates."
+echo "Configure it under Services > ShopGuard, and enable the Unbound statistics it reads the"
+echo "domains from (Reporting > Unbound DNS, Settings tab). Updates come with the OPNsense updates."

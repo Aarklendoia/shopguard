@@ -117,8 +117,8 @@ block), score threshold, worker status.
 
 Every 5 minutes while enabled, the plugin sends the worker the names Unbound resolved
 since the last run that it has not sent yet. It reads them from the database of
-**Reporting → Unbound DNS**, so Unbound statistics must be enabled (Reporting → Settings);
-no query log is needed. Only the `domain` column is read: never the client address.
+**Reporting → Unbound DNS**, so Unbound statistics must be enabled (Reporting → Unbound
+DNS, *Settings* tab, *Enabled*); no query log is needed. Only the `domain` column is read: never the client address.
 Blocked queries, failed lookups, LAN host overrides and local names (`.lan`, `.home`,
 `.arpa`, the router's own domain…) are left out. State: `/var/db/shopguard/`.
 
