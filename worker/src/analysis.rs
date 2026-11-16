@@ -64,16 +64,19 @@ pub trait Analyzer: Send + Sync {
 }
 
 /// Analyzers enabled in this build, in the order they run.
-pub fn analyzers(client: reqwest::Client) -> Vec<Box<dyn Analyzer>> {
+pub fn analyzers(client: reqwest::Client, user_agent: Option<&str>) -> Vec<Box<dyn Analyzer>> {
     let bootstrap = reqwest::Url::parse(crate::rdap::BOOTSTRAP_URL).expect("static URL");
     let mut list: Vec<Box<dyn Analyzer>> = vec![
         Box::new(crate::rdap::Rdap::new(client.clone(), bootstrap)),
         Box::new(crate::tls::Tls::new()),
     ];
-    match crate::hosting::Hosting::new(client) {
+    match crate::hosting::Hosting::new(client.clone()) {
         Ok(h) => list.push(Box::new(h)),
         Err(e) => warn!("hosting analyzer disabled: {e}"),
     }
+    // one fetcher for every page analyzer: they share its cache and page budget
+    let fetcher = std::sync::Arc::new(crate::fetch::Fetcher::new(client, user_agent));
+    list.push(Box::new(crate::page::HomePage::new(fetcher)));
     list
 }
 

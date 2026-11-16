@@ -7,9 +7,11 @@ mod analysis;
 mod api;
 mod config;
 mod domain;
+mod fetch;
 mod hosting;
 mod http;
 mod netguard;
+mod page;
 mod rdap;
 // used by the SIRET check to come
 #[allow(dead_code)]
@@ -68,7 +70,7 @@ async fn main() -> ExitCode {
     tokio::spawn(analysis::run(
         rx,
         store.clone(),
-        analysis::analyzers(http::client()),
+        analysis::analyzers(http::client(), cfg.user_agent.as_deref()),
     ));
     tokio::spawn(schedule(store.clone(), tx.clone()));
 

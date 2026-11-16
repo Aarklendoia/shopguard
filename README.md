@@ -45,7 +45,9 @@ worker/                          shopguard-worker (Rust)
   src/domain.rs                  registrable domain (Public Suffix List)
   src/http.rs                    HTTP client of the analyzers (HTTPS, public addresses only)
   src/hosting.rs, hosting.txt    analyzer: hosting network, DROP lists, known platforms
+  src/fetch.rs                   page downloads from hostile sites (HTML only, size, budget)
   src/netguard.rs                which addresses the worker may connect to (SSRF guard)
+  src/page.rs                    analyzer: home page, does it look like a shop?
   src/rdap.rs                    analyzer: domain registration age (RDAP)
   src/siret.rs                   SIREN/SIRET validation
   src/tls.rs                     analyzer: certificate presented on port 443
@@ -73,6 +75,7 @@ SHOPGUARD_TOKEN=$(cat .shopguard-token) docker compose -f deploy/docker-compose.
 | `SHOPGUARD_QUEUE`     | `10000`     | maximum number of domains waiting for analysis           |
 | `SHOPGUARD_DATA`      | `/data`     | directory of `store.jsonl`; empty: memory only           |
 | `SHOPGUARD_MAX_DOMAINS` | `100000`  | domains kept, the least recently seen are evicted        |
+| `SHOPGUARD_USER_AGENT` | current Firefox | fixed browser User-Agent of page downloads; unset, the Firefox version is read daily from Mozilla |
 | `SHOPGUARD_LOG`       | `info`      | log filter, e.g. `info,shopguard_worker=debug`           |
 
 Updating the image is up to you (Watchtower, Renovate on your compose files, or by hand):
