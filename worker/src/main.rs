@@ -70,7 +70,7 @@ async fn main() -> ExitCode {
     tokio::spawn(analysis::run(
         rx,
         store.clone(),
-        analysis::analyzers(http::client(), &cfg.user_agent),
+        analysis::analyzers(http::client(), cfg.user_agent.as_deref()),
     ));
     tokio::spawn(schedule(store.clone(), tx.clone()));
 

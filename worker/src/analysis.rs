@@ -64,7 +64,7 @@ pub trait Analyzer: Send + Sync {
 }
 
 /// Analyzers enabled in this build, in the order they run.
-pub fn analyzers(client: reqwest::Client, user_agent: &str) -> Vec<Box<dyn Analyzer>> {
+pub fn analyzers(client: reqwest::Client, user_agent: Option<&str>) -> Vec<Box<dyn Analyzer>> {
     let bootstrap = reqwest::Url::parse(crate::rdap::BOOTSTRAP_URL).expect("static URL");
     let mut list: Vec<Box<dyn Analyzer>> = vec![
         Box::new(crate::rdap::Rdap::new(client.clone(), bootstrap)),

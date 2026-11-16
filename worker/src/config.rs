@@ -17,9 +17,9 @@ pub struct Config {
     pub data: Option<PathBuf>,
     /// `SHOPGUARD_MAX_DOMAINS`: domains kept, least recently seen evicted, default 100000.
     pub max_domains: usize,
-    /// `SHOPGUARD_USER_AGENT`: browser User-Agent of the page downloads, default a recent
-    /// desktop Firefox.
-    pub user_agent: String,
+    /// `SHOPGUARD_USER_AGENT`: fixed browser User-Agent of the page downloads; unset, the
+    /// current desktop Firefox (version checked daily).
+    pub user_agent: Option<String>,
 }
 
 impl Config {
@@ -70,9 +70,11 @@ impl Config {
             };
         let user_agent = get("SHOPGUARD_USER_AGENT")
             .map(|u| u.trim().to_owned())
-            .filter(|u| !u.is_empty())
-            .unwrap_or_else(|| crate::fetch::DEFAULT_USER_AGENT.to_owned());
-        if user_agent.chars().any(|c| c.is_control()) {
+            .filter(|u| !u.is_empty());
+        if user_agent
+            .as_deref()
+            .is_some_and(|u| u.chars().any(|c| c.is_control()))
+        {
             return Err("SHOPGUARD_USER_AGENT: control characters are not allowed".into());
         }
         Ok(Self {
@@ -110,6 +112,14 @@ mod tests {
         assert_eq!(c.data.as_deref(), Some(std::path::Path::new("/data")));
         assert_eq!(c.max_domains, 100_000);
         assert_eq!(cfg(&[TOKEN, ("SHOPGUARD_DATA", "")]).unwrap().data, None);
+        assert_eq!(c.user_agent, None);
+        assert_eq!(
+            cfg(&[TOKEN, ("SHOPGUARD_USER_AGENT", " Custom/1.0 ")])
+                .unwrap()
+                .user_agent
+                .as_deref(),
+            Some("Custom/1.0")
+        );
     }
 
     #[test]
@@ -120,5 +130,6 @@ mod tests {
         assert!(cfg(&[TOKEN, ("SHOPGUARD_LISTEN", "nope")]).is_err());
         assert!(cfg(&[TOKEN, ("SHOPGUARD_QUEUE", "0")]).is_err());
         assert!(cfg(&[TOKEN, ("SHOPGUARD_MAX_DOMAINS", "0")]).is_err());
+        assert!(cfg(&[TOKEN, ("SHOPGUARD_USER_AGENT", "a\nb")]).is_err());
     }
 }

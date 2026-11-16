@@ -21,19 +21,51 @@
 //! page) is asked again once with [`HONEST_USER_AGENT`], which they often let through.
 //! When both are refused the site ends up as `page_blocked`. The other clients of the
 //! worker (RDAP, DROP lists…) keep their own User-Agent.
+//!
+//! An outdated Firefox gives a bot away, and Firefox now ships every two weeks: the
+//! version is read once a day from Mozilla's [`FIREFOX_VERSIONS_URL`] (the one its own
+//! sites use), [`FIREFOX`] until it answers. `SHOPGUARD_USER_AGENT` replaces all that
+//! with a fixed User-Agent.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use reqwest::{Client, StatusCode, Url, header};
 use tokio::sync::Mutex;
+use tracing::{info, warn};
 
 use crate::domain;
 
-/// Desktop Firefox, the release of November 2026. An outdated version gives a bot away:
-/// update it with the releases, or set `SHOPGUARD_USER_AGENT`.
-pub const DEFAULT_USER_AGENT: &str =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:160.0) Gecko/20100101 Firefox/160.0";
+/// Firefox release when this worker was built; the actual one comes from
+/// [`FIREFOX_VERSIONS_URL`].
+pub const FIREFOX: u32 = 160;
+/// Current Firefox versions, published by Mozilla (`LATEST_FIREFOX_VERSION`).
+pub const FIREFOX_VERSIONS_URL: &str =
+    "https://product-details.mozilla.org/1.0/firefox_versions.json";
+const FIREFOX_TTL: Duration = Duration::from_secs(24 * 3600);
+const FIREFOX_RETRY: Duration = Duration::from_secs(3600);
+
+/// User-Agent of desktop Firefox `major` on Windows (the most common one).
+pub fn firefox_user_agent(major: u32) -> String {
+    format!(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:{major}.0) Gecko/20100101 Firefox/{major}.0"
+    )
+}
+
+/// Major version in Mozilla's `firefox_versions.json`. Versions older than the built-in
+/// one or absurdly far ahead are refused: a broken or tampered answer cannot make the
+/// worker stand out.
+pub fn parse_firefox_versions(body: &str) -> Option<u32> {
+    let v: serde_json::Value = serde_json::from_str(body).ok()?;
+    let major = v
+        .get("LATEST_FIREFOX_VERSION")?
+        .as_str()?
+        .split('.')
+        .next()?
+        .parse::<u32>()
+        .ok()?;
+    (FIREFOX..=FIREFOX + 200).contains(&major).then_some(major)
+}
 /// Second try when the browser identity is refused: protections that compare the
 /// browser User-Agent with the TLS fingerprint (rustls, not Firefox) block it, but often
 /// let a client that says what it is through.
@@ -86,6 +118,13 @@ pub fn is_challenge(html: &str) -> bool {
     .any(|m| h.contains(m))
 }
 
+/// Current Firefox, refreshed daily.
+struct Firefox {
+    major: u32,
+    checked: Option<Instant>,
+    ok: bool,
+}
+
 #[derive(Default)]
 struct State {
     cache: HashMap<String, (Instant, Result<Page, String>)>,
@@ -95,7 +134,10 @@ struct State {
 
 pub struct Fetcher {
     client: Client,
-    user_agent: String,
+    /// `SHOPGUARD_USER_AGENT`: replaces the current Firefox
+    fixed_user_agent: Option<String>,
+    versions_url: Url,
+    firefox: Mutex<Firefox>,
     state: Mutex<State>,
 }
 
@@ -113,12 +155,78 @@ fn is_html(content_type: Option<&str>) -> bool {
 }
 
 impl Fetcher {
-    pub fn new(client: Client, user_agent: &str) -> Self {
+    /// `user_agent`: a fixed browser User-Agent; `None` follows the Firefox releases.
+    pub fn new(client: Client, user_agent: Option<&str>) -> Self {
         Self {
             client,
-            user_agent: user_agent.to_owned(),
+            fixed_user_agent: user_agent.map(str::to_owned),
+            versions_url: Url::parse(FIREFOX_VERSIONS_URL).expect("static URL"),
+            firefox: Mutex::new(Firefox {
+                major: FIREFOX,
+                checked: None,
+                ok: false,
+            }),
             state: Mutex::default(),
         }
+    }
+
+    #[cfg(test)]
+    fn versions_url(mut self, url: Url) -> Self {
+        self.versions_url = url;
+        self
+    }
+
+    /// Browser User-Agent: the fixed one, or the current Firefox (checked once a day,
+    /// every hour while Mozilla does not answer).
+    pub async fn user_agent(&self) -> String {
+        if let Some(ua) = &self.fixed_user_agent {
+            return ua.clone();
+        }
+        let mut ff = self.firefox.lock().await;
+        let due = match ff.checked {
+            None => true,
+            Some(at) => at.elapsed() >= if ff.ok { FIREFOX_TTL } else { FIREFOX_RETRY },
+        };
+        if due {
+            ff.checked = Some(Instant::now());
+            match self.latest_firefox().await {
+                Ok(major) => {
+                    ff.ok = true;
+                    // never back: a stale mirror must not age the User-Agent
+                    if major > ff.major {
+                        info!(major, "Firefox User-Agent updated");
+                        ff.major = major;
+                    }
+                }
+                Err(e) => {
+                    ff.ok = false;
+                    warn!("Firefox version: {e}; staying on {}", ff.major);
+                }
+            }
+        }
+        firefox_user_agent(ff.major)
+    }
+
+    async fn latest_firefox(&self) -> Result<u32, String> {
+        const MAX: usize = 64 * 1024;
+        let url = &self.versions_url;
+        let mut resp = self
+            .client
+            .get(url.clone())
+            .timeout(TIMEOUT)
+            .send()
+            .await
+            .and_then(|r| r.error_for_status())
+            .map_err(|e| format!("{url}: {e}"))?;
+        let mut body = Vec::new();
+        while let Some(chunk) = resp.chunk().await.map_err(|e| format!("{url}: {e}"))? {
+            if body.len() + chunk.len() > MAX {
+                return Err(format!("{url}: answer larger than {MAX} bytes"));
+            }
+            body.extend_from_slice(&chunk);
+        }
+        parse_firefox_versions(&String::from_utf8_lossy(&body))
+            .ok_or_else(|| format!("{url}: no plausible LATEST_FIREFOX_VERSION"))
     }
 
     /// The page at `url`, from the cache when fetched less than [`WINDOW`] ago.
@@ -139,7 +247,8 @@ impl Fetcher {
         if !self.take_budget(&site).await {
             return Err(format!("{site}: page budget used"));
         }
-        let mut page = self.download(url, &self.user_agent, true).await;
+        let ua = self.user_agent().await;
+        let mut page = self.download(url, &ua, true).await;
         if matches!(&page, Ok(p) if p.refused())
             && self.take_budget(&site).await
             && let Ok(p) = self.download(url, HONEST_USER_AGENT, false).await
@@ -391,6 +500,15 @@ mod tests {
                 }),
             )
             .route(
+                "/versions",
+                get(|| async {
+                    (
+                        [(CONTENT_TYPE, "application/json")],
+                        r#"{"LATEST_FIREFOX_VERSION": "171.0", "FIREFOX_ESR": "153.7.0esr"}"#,
+                    )
+                }),
+            )
+            .route(
                 "/blocked",
                 get(|| async {
                     (
@@ -412,10 +530,15 @@ mod tests {
         Url::parse(&format!("{base}{path}")).unwrap()
     }
 
+    /// Following the Firefox releases of the test server.
+    fn fetcher(base: &str) -> Fetcher {
+        Fetcher::new(crate::http::test_client(), None).versions_url(url(base, "/versions"))
+    }
+
     #[tokio::test]
     async fn html_only_and_size_limit() {
         let (base, task) = server().await;
-        let f = Fetcher::new(crate::http::test_client(), DEFAULT_USER_AGENT);
+        let f = fetcher(&base);
         let p = f.get(&url(&base, "/moved")).await.unwrap();
         assert_eq!(p.url.path(), "/");
         assert!(p.html.contains("é"));
@@ -441,13 +564,14 @@ mod tests {
         // browser headers
         let h = f.get(&url(&base, "/headers")).await.unwrap().html;
         let parts: Vec<&str> = h.split('|').collect();
-        assert_eq!(parts[0], DEFAULT_USER_AGENT);
+        // the Firefox of the day
+        assert_eq!(parts[0], firefox_user_agent(171));
         assert!(parts[1].starts_with("fr-FR"));
         assert!(parts[2].contains("gzip") && parts[2].contains("br"), "{h}");
         assert_eq!(parts[3], "navigate");
         // challenge for the browser identity: asked again with the honest one
         // (fresh fetcher: the requests above used this server's page budget)
-        let fresh = Fetcher::new(crate::http::test_client(), DEFAULT_USER_AGENT);
+        let fresh = fetcher(&base);
         let p = fresh.get(&url(&base, "/picky")).await.unwrap();
         assert!(!p.refused() && p.html.contains("shopguard-worker"), "{p:?}");
         // an error comes back with its status, even when it is not HTML
@@ -459,7 +583,7 @@ mod tests {
     #[tokio::test]
     async fn cache_and_budget() {
         let (base, task) = server().await;
-        let f = Fetcher::new(crate::http::test_client(), DEFAULT_USER_AGENT);
+        let f = fetcher(&base);
         // cached: does not use the budget again
         for _ in 0..10 {
             f.get(&url(&base, "/")).await.unwrap();
@@ -474,6 +598,46 @@ mod tests {
                 .contains("budget")
         );
         task.abort();
+    }
+
+    #[tokio::test]
+    async fn firefox_version() {
+        let (base, task) = server().await;
+        // Mozilla does not answer (no such page): the built-in version
+        let f = Fetcher::new(crate::http::test_client(), None).versions_url(url(&base, "/404"));
+        assert_eq!(f.user_agent().await, firefox_user_agent(FIREFOX));
+        assert_eq!(fetcher(&base).user_agent().await, firefox_user_agent(171));
+        // fixed by SHOPGUARD_USER_AGENT: Mozilla is not asked
+        let f = Fetcher::new(crate::http::test_client(), Some("Custom/1.0"))
+            .versions_url(url(&base, "/versions"));
+        assert_eq!(f.user_agent().await, "Custom/1.0");
+        task.abort();
+    }
+
+    #[test]
+    fn firefox_versions() {
+        assert_eq!(
+            parse_firefox_versions(r#"{"LATEST_FIREFOX_VERSION": "163.0.1"}"#),
+            Some(163)
+        );
+        assert_eq!(
+            parse_firefox_versions(&format!(r#"{{"LATEST_FIREFOX_VERSION": "{FIREFOX}.0"}}"#)),
+            Some(FIREFOX)
+        );
+        // older than the built-in one, absurd, missing, not JSON
+        for bad in [
+            r#"{"LATEST_FIREFOX_VERSION": "115.0"}"#,
+            r#"{"LATEST_FIREFOX_VERSION": "9999.0"}"#,
+            r#"{"LATEST_FIREFOX_VERSION": 170}"#,
+            r#"{"FIREFOX_ESR": "153.7.0esr"}"#,
+            "<html>",
+        ] {
+            assert_eq!(parse_firefox_versions(bad), None, "{bad}");
+        }
+        assert_eq!(
+            firefox_user_agent(170),
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:170.0) Gecko/20100101 Firefox/170.0"
+        );
     }
 
     #[test]
