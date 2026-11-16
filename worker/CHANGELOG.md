@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/Aarklendoia/shopguard/compare/worker-v0.4.0...worker-v0.5.0) (2026-11-16)
+
+
+### Features
+
+* **worker:** legal notice and SIREN/SIRET check ([#44](https://github.com/Aarklendoia/shopguard/issues/44)) ([f7ef948](https://github.com/Aarklendoia/shopguard/commit/f7ef94803ec2687a421dc162468f7fbad20acb24)), closes [#8](https://github.com/Aarklendoia/shopguard/issues/8)
+
 ## [0.4.0](https://github.com/Aarklendoia/shopguard/compare/worker-v0.3.1...worker-v0.4.0) (2026-11-16)
 
 
