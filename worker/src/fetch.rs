@@ -28,7 +28,7 @@
 //! with a fixed User-Agent.
 
 use std::collections::HashMap;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use reqwest::{Client, StatusCode, Url, header};
 use tokio::sync::Mutex;
@@ -39,6 +39,8 @@ use crate::domain;
 /// Firefox release when this worker was built; the actual one comes from
 /// [`FIREFOX_VERSIONS_URL`].
 pub const FIREFOX: u32 = 160;
+/// Release date of [`FIREFOX`] (2026-11-10), in seconds since the Unix epoch.
+const FIREFOX_RELEASED: u64 = 1_794_268_800;
 /// Current Firefox versions, published by Mozilla (`LATEST_FIREFOX_VERSION`).
 pub const FIREFOX_VERSIONS_URL: &str =
     "https://product-details.mozilla.org/1.0/firefox_versions.json";
@@ -52,19 +54,24 @@ pub fn firefox_user_agent(major: u32) -> String {
     )
 }
 
-/// Major version in Mozilla's `firefox_versions.json`. Versions older than the built-in
-/// one or absurdly far ahead are refused: a broken or tampered answer cannot make the
-/// worker stand out.
+/// Major version in Mozilla's `firefox_versions.json`.
 pub fn parse_firefox_versions(body: &str) -> Option<u32> {
     let v: serde_json::Value = serde_json::from_str(body).ok()?;
-    let major = v
-        .get("LATEST_FIREFOX_VERSION")?
+    v.get("LATEST_FIREFOX_VERSION")?
         .as_str()?
         .split('.')
         .next()?
         .parse::<u32>()
-        .ok()?;
-    (FIREFOX..=FIREFOX + 200).contains(&major).then_some(major)
+        .ok()
+}
+
+/// Whether `major` can follow `known`, the version known to be current `since` ago:
+/// Firefox ships every two weeks, so at most one version a week plus two. A broken or
+/// tampered answer cannot make the worker stand out with a version that does not exist.
+pub fn plausible_firefox(known: u32, since: Duration, major: u32) -> bool {
+    let weeks = since.as_secs() / (7 * 24 * 3600);
+    let max = u64::from(known) + 2 + weeks;
+    u64::from(major) <= max
 }
 /// Second try when the browser identity is refused: protections that compare the
 /// browser User-Agent with the TLS fingerprint (rustls, not Firefox) block it, but often
@@ -121,6 +128,8 @@ pub fn is_challenge(html: &str) -> bool {
 /// Current Firefox, refreshed daily.
 struct Firefox {
     major: u32,
+    /// when `major` was last known to be the current release
+    known_at: SystemTime,
     checked: Option<Instant>,
     ok: bool,
 }
@@ -163,6 +172,7 @@ impl Fetcher {
             versions_url: Url::parse(FIREFOX_VERSIONS_URL).expect("static URL"),
             firefox: Mutex::new(Firefox {
                 major: FIREFOX,
+                known_at: UNIX_EPOCH + Duration::from_secs(FIREFOX_RELEASED),
                 checked: None,
                 ok: false,
             }),
@@ -190,12 +200,25 @@ impl Fetcher {
         if due {
             ff.checked = Some(Instant::now());
             match self.latest_firefox().await {
+                // never back: a stale answer must not age the User-Agent
+                Ok(major) if major < ff.major => ff.ok = true,
                 Ok(major) => {
-                    ff.ok = true;
-                    // never back: a stale mirror must not age the User-Agent
-                    if major > ff.major {
-                        info!(major, "Firefox User-Agent updated");
+                    let since = SystemTime::now()
+                        .duration_since(ff.known_at)
+                        .unwrap_or_default();
+                    if plausible_firefox(ff.major, since, major) {
+                        ff.ok = true;
+                        if major > ff.major {
+                            info!(major, "Firefox User-Agent updated");
+                        }
                         ff.major = major;
+                        ff.known_at = SystemTime::now();
+                    } else {
+                        ff.ok = false;
+                        warn!(
+                            "Firefox version: {major} is too far ahead of {}; staying on it",
+                            ff.major
+                        );
                     }
                 }
                 Err(e) => {
@@ -226,7 +249,7 @@ impl Fetcher {
             body.extend_from_slice(&chunk);
         }
         parse_firefox_versions(&String::from_utf8_lossy(&body))
-            .ok_or_else(|| format!("{url}: no plausible LATEST_FIREFOX_VERSION"))
+            .ok_or_else(|| format!("{url}: no LATEST_FIREFOX_VERSION"))
     }
 
     /// The page at `url`, from the cache when fetched less than [`WINDOW`] ago.
@@ -504,7 +527,7 @@ mod tests {
                 get(|| async {
                     (
                         [(CONTENT_TYPE, "application/json")],
-                        r#"{"LATEST_FIREFOX_VERSION": "171.0", "FIREFOX_ESR": "153.7.0esr"}"#,
+                        r#"{"LATEST_FIREFOX_VERSION": "162.0", "FIREFOX_ESR": "153.7.0esr"}"#,
                     )
                 }),
             )
@@ -565,7 +588,7 @@ mod tests {
         let h = f.get(&url(&base, "/headers")).await.unwrap().html;
         let parts: Vec<&str> = h.split('|').collect();
         // the Firefox of the day
-        assert_eq!(parts[0], firefox_user_agent(171));
+        assert_eq!(parts[0], firefox_user_agent(162));
         assert!(parts[1].starts_with("fr-FR"));
         assert!(parts[2].contains("gzip") && parts[2].contains("br"), "{h}");
         assert_eq!(parts[3], "navigate");
@@ -606,7 +629,7 @@ mod tests {
         // Mozilla does not answer (no such page): the built-in version
         let f = Fetcher::new(crate::http::test_client(), None).versions_url(url(&base, "/404"));
         assert_eq!(f.user_agent().await, firefox_user_agent(FIREFOX));
-        assert_eq!(fetcher(&base).user_agent().await, firefox_user_agent(171));
+        assert_eq!(fetcher(&base).user_agent().await, firefox_user_agent(162));
         // fixed by SHOPGUARD_USER_AGENT: Mozilla is not asked
         let f = Fetcher::new(crate::http::test_client(), Some("Custom/1.0"))
             .versions_url(url(&base, "/versions"));
@@ -624,16 +647,21 @@ mod tests {
             parse_firefox_versions(&format!(r#"{{"LATEST_FIREFOX_VERSION": "{FIREFOX}.0"}}"#)),
             Some(FIREFOX)
         );
-        // older than the built-in one, absurd, missing, not JSON
+        // not a string, missing, not JSON
         for bad in [
-            r#"{"LATEST_FIREFOX_VERSION": "115.0"}"#,
-            r#"{"LATEST_FIREFOX_VERSION": "9999.0"}"#,
             r#"{"LATEST_FIREFOX_VERSION": 170}"#,
             r#"{"FIREFOX_ESR": "153.7.0esr"}"#,
             "<html>",
         ] {
             assert_eq!(parse_firefox_versions(bad), None, "{bad}");
         }
+        let week = Duration::from_secs(7 * 24 * 3600);
+        // the next releases, right away
+        assert!(plausible_firefox(160, Duration::ZERO, 162));
+        assert!(!plausible_firefox(160, Duration::ZERO, 163));
+        // Mozilla unreachable (or the image old) for a year: ~26 releases
+        assert!(plausible_firefox(160, 52 * week, 186));
+        assert!(!plausible_firefox(160, 52 * week, 9999));
         assert_eq!(
             firefox_user_agent(170),
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:170.0) Gecko/20100101 Firefox/170.0"
