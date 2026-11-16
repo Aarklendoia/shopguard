@@ -24,7 +24,8 @@ it can check right away.
   The worker queries public services about those domains (RDAP registries, Certificate
   Transparency logs, the French company directory) and fetches the sites themselves, from
   the Docker host. The hosting network is looked up by IP address only (Team Cymru DNS),
-  and the DROP lists of criminal networks are downloaded once a day.
+  and the DROP lists of criminal networks and the current Firefox version (for the
+  User-Agent of page downloads) are downloaded once a day.
 - **Observe first**: by default suspicious domains are only listed in the interface. Small
   legitimate shops are new domains on Shopify too: blocking only makes sense once the
   scoring has proven itself on your network.
@@ -41,11 +42,14 @@ it can check right away.
 ```
 worker/                          shopguard-worker (Rust)
   src/api.rs                     HTTP API used by the plugin
+  src/company.rs                 French company directory (SIREN exists, active?)
   src/analysis.rs                scoring pipeline, Analyzer trait
   src/domain.rs                  registrable domain (Public Suffix List)
   src/http.rs                    HTTP client of the analyzers (HTTPS, public addresses only)
+  src/html.rs                    reading hostile HTML as text: visible text, links
   src/hosting.rs, hosting.txt    analyzer: hosting network, DROP lists, known platforms
   src/fetch.rs                   page downloads from hostile sites (HTML only, size, budget)
+  src/legal.rs                   analyzer: legal notice, SIREN/SIRET checked in the directory
   src/netguard.rs                which addresses the worker may connect to (SSRF guard)
   src/page.rs                    analyzer: home page, does it look like a shop?
   src/rdap.rs                    analyzer: domain registration age (RDAP)

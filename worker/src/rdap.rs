@@ -135,7 +135,7 @@ fn parse_domain(body: &[u8]) -> Result<Lookup, String> {
 
 /// Days since 1970-01-01 of an RFC 3339 date (`2024-03-05T10:00:00Z`); the time of day
 /// does not matter here.
-fn epoch_days(date: &str) -> Option<u64> {
+pub fn epoch_days(date: &str) -> Option<u64> {
     let d = date.get(..10)?;
     let mut parts = d.split('-');
     let y: i64 = parts.next()?.parse().ok()?;
@@ -154,7 +154,7 @@ fn epoch_days(date: &str) -> Option<u64> {
     u64::try_from(era * 146_097 + doe - 719_468).ok()
 }
 
-fn today() -> u64 {
+pub fn today() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() / 86_400)
@@ -170,7 +170,7 @@ fn signal(name: &str, weight: i32, detail: String) -> Signal {
     }
 }
 
-fn date(days: u64) -> String {
+pub fn date(days: u64) -> String {
     // inverse of epoch_days (civil_from_days)
     let z = days as i64 + 719_468;
     let era = z.div_euclid(146_097);
