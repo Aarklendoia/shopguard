@@ -17,6 +17,9 @@ pub struct Config {
     pub data: Option<PathBuf>,
     /// `SHOPGUARD_MAX_DOMAINS`: domains kept, least recently seen evicted, default 100000.
     pub max_domains: usize,
+    /// `SHOPGUARD_USER_AGENT`: browser User-Agent of the page downloads, default a recent
+    /// desktop Firefox.
+    pub user_agent: String,
 }
 
 impl Config {
@@ -65,6 +68,13 @@ impl Config {
                     format!("SHOPGUARD_MAX_DOMAINS={m}: expected a positive number")
                 })?,
             };
+        let user_agent = get("SHOPGUARD_USER_AGENT")
+            .map(|u| u.trim().to_owned())
+            .filter(|u| !u.is_empty())
+            .unwrap_or_else(|| crate::fetch::DEFAULT_USER_AGENT.to_owned());
+        if user_agent.chars().any(|c| c.is_control()) {
+            return Err("SHOPGUARD_USER_AGENT: control characters are not allowed".into());
+        }
         Ok(Self {
             listen,
             token,
@@ -72,6 +82,7 @@ impl Config {
             queue,
             data,
             max_domains,
+            user_agent,
         })
     }
 }

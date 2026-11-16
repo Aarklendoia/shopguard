@@ -12,7 +12,7 @@ publish = false
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "tokio", "query"] }
 hickory-resolver = "0.26"
 psl = "2"
-reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls-no-provider", "gzip", "brotli"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -28,6 +28,7 @@ x509-parser = "0.18"
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }
+flate2 = "1"
 
 [profile.release]
 codegen-units = 1

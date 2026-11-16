@@ -6,16 +6,21 @@
 //!
 //! - HTML only (`text/html`, `application/xhtml+xml`), never executed: the analyzers
 //!   read it as text;
-//! - the body is read chunk by chunk and dropped past [`MAX_BODY`]; no compression is
-//!   asked for (reqwest is built without it), so a small answer cannot inflate;
+//! - the body is read chunk by chunk and dropped past [`MAX_BODY`] *decompressed* bytes
+//!   (gzip and brotli are accepted like a browser does), so a small answer cannot
+//!   inflate into memory;
 //! - one request lasts at most [`TIMEOUT`];
 //! - at most [`PAGES_PER_DOMAIN`] pages per domain and per [`WINDOW`], and the pages are
 //!   kept for that time so that several analyzers share one download.
 //!
-//! robots.txt is not read: it is meant for crawlers, and the worker is not one. It only
-//! looks at a handful of pages of a domain a person on the network has just visited,
-//! like a browser would, and a fake shop could use robots.txt to hide from it. The
-//! User-Agent says who is asking.
+//! The worker browses like a person: robots.txt is not read (it only looks at a handful
+//! of pages of a domain someone on the network has just visited), and pages are asked
+//! for with the headers of a desktop Firefox. Fake shops often show bots something else
+//! than visitors (cloaking). Bot protections that compare that User-Agent with the TLS
+//! fingerprint (rustls, not Firefox) refuse it, so a refused page (403, 429, challenge
+//! page) is asked again once with [`HONEST_USER_AGENT`], which they often let through.
+//! When both are refused the site ends up as `page_blocked`. The other clients of the
+//! worker (RDAP, DROP lists…) keep their own User-Agent.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -25,8 +30,14 @@ use tokio::sync::Mutex;
 
 use crate::domain;
 
-/// Honest, but in the usual browser form: some sites only answer those.
-pub const USER_AGENT: &str = concat!(
+/// Desktop Firefox, the release of November 2026. An outdated version gives a bot away:
+/// update it with the releases, or set `SHOPGUARD_USER_AGENT`.
+pub const DEFAULT_USER_AGENT: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:160.0) Gecko/20100101 Firefox/160.0";
+/// Second try when the browser identity is refused: protections that compare the
+/// browser User-Agent with the TLS fingerprint (rustls, not Firefox) block it, but often
+/// let a client that says what it is through.
+pub const HONEST_USER_AGENT: &str = concat!(
     "Mozilla/5.0 (compatible; shopguard-worker/",
     env!("CARGO_PKG_VERSION"),
     "; +https://github.com/Aarklendoia/shopguard)"
@@ -48,6 +59,33 @@ pub struct Page {
     pub html: String,
 }
 
+impl Page {
+    /// The site refuses automated visits: 403, 429, or a bot challenge page.
+    pub fn refused(&self) -> bool {
+        self.status == 403 || self.status == 429 || is_challenge(&self.html)
+    }
+}
+
+/// Interstitial pages of bot protections (Cloudflare, DataDome, Imperva, PerimeterX,
+/// Akamai): served with 200 instead of the site.
+pub fn is_challenge(html: &str) -> bool {
+    if html.len() > 64 * 1024 {
+        // challenge pages are small; a real page may mention these words
+        return false;
+    }
+    let h = html.to_ascii_lowercase();
+    [
+        "/cdn-cgi/challenge-platform",
+        "cf-chl-",
+        "captcha-delivery.com",
+        "_incapsula_resource",
+        "px-captcha",
+        "/_sec/cp_challenge",
+    ]
+    .iter()
+    .any(|m| h.contains(m))
+}
+
 #[derive(Default)]
 struct State {
     cache: HashMap<String, (Instant, Result<Page, String>)>,
@@ -57,6 +95,7 @@ struct State {
 
 pub struct Fetcher {
     client: Client,
+    user_agent: String,
     state: Mutex<State>,
 }
 
@@ -74,9 +113,10 @@ fn is_html(content_type: Option<&str>) -> bool {
 }
 
 impl Fetcher {
-    pub fn new(client: Client) -> Self {
+    pub fn new(client: Client, user_agent: &str) -> Self {
         Self {
             client,
+            user_agent: user_agent.to_owned(),
             state: Mutex::default(),
         }
     }
@@ -89,23 +129,24 @@ impl Fetcher {
             .and_then(domain::registrable)
             .unwrap_or_else(|| url.host_str().unwrap_or("").to_owned());
         {
-            let mut st = self.state.lock().await;
+            let st = self.state.lock().await;
             if let Some((at, page)) = st.cache.get(&key)
                 && at.elapsed() < WINDOW
             {
                 return page.clone();
             }
-            let now = Instant::now();
-            let used = st.budget.entry(site.clone()).or_insert((now, 0));
-            if used.0.elapsed() >= WINDOW {
-                *used = (now, 0);
-            }
-            if used.1 >= PAGES_PER_DOMAIN {
-                return Err(format!("{site}: page budget used"));
-            }
-            used.1 += 1;
         }
-        let page = self.download(url).await;
+        if !self.take_budget(&site).await {
+            return Err(format!("{site}: page budget used"));
+        }
+        let mut page = self.download(url, &self.user_agent, true).await;
+        if matches!(&page, Ok(p) if p.refused())
+            && self.take_budget(&site).await
+            && let Ok(p) = self.download(url, HONEST_USER_AGENT, false).await
+            && !p.refused()
+        {
+            page = Ok(p);
+        }
         let mut st = self.state.lock().await;
         if st.cache.len() >= CACHE_MAX {
             st.cache.retain(|_, (at, _)| at.elapsed() < WINDOW);
@@ -118,17 +159,46 @@ impl Fetcher {
         page
     }
 
-    async fn download(&self, url: &Url) -> Result<Page, String> {
-        let mut resp = self
+    /// One page of the domain's budget; false when used up.
+    async fn take_budget(&self, site: &str) -> bool {
+        let mut st = self.state.lock().await;
+        let now = Instant::now();
+        let used = st.budget.entry(site.to_owned()).or_insert((now, 0));
+        if used.0.elapsed() >= WINDOW {
+            *used = (now, 0);
+        }
+        if used.1 >= PAGES_PER_DOMAIN {
+            return false;
+        }
+        used.1 += 1;
+        true
+    }
+
+    async fn download(&self, url: &Url, user_agent: &str, browser: bool) -> Result<Page, String> {
+        let mut req = self
             .client
             .get(url.clone())
-            .header(header::USER_AGENT, USER_AGENT)
-            .header(header::ACCEPT, "text/html,application/xhtml+xml;q=0.9")
-            .header(header::ACCEPT_LANGUAGE, "fr,en;q=0.5")
-            .timeout(TIMEOUT)
-            .send()
-            .await
-            .map_err(|e| format!("{url}: {e}"))?;
+            .header(header::USER_AGENT, user_agent)
+            .header(
+                header::ACCEPT,
+                "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            )
+            .header(
+                header::ACCEPT_LANGUAGE,
+                "fr-FR,fr;q=0.8,en-US;q=0.5,en;q=0.3",
+            )
+            .timeout(TIMEOUT);
+        if browser {
+            // what Firefox adds for a typed address; Accept-Encoding is set by reqwest
+            req = req
+                .header(header::UPGRADE_INSECURE_REQUESTS, "1")
+                .header("sec-fetch-dest", "document")
+                .header("sec-fetch-mode", "navigate")
+                .header("sec-fetch-site", "none")
+                .header("sec-fetch-user", "?1")
+                .header("priority", "u=0, i");
+        }
+        let mut resp = req.send().await.map_err(|e| format!("{url}: {e}"))?;
         let status = resp.status();
         if status == StatusCode::NOT_MODIFIED || status.is_informational() {
             return Err(format!("{url}: HTTP {status}"));
@@ -261,6 +331,66 @@ mod tests {
                 get(|| async { axum::response::Redirect::temporary("/") }),
             )
             .route(
+                "/bomb",
+                get(|| async {
+                    use std::io::Write;
+                    let mut gz =
+                        flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::best());
+                    gz.write_all(&vec![b' '; 3 * MAX_BODY / 2]).unwrap();
+                    (
+                        [
+                            (CONTENT_TYPE, "text/html"),
+                            (axum::http::header::CONTENT_ENCODING, "gzip"),
+                        ],
+                        gz.finish().unwrap(),
+                    )
+                }),
+            )
+            .route(
+                "/headers",
+                get(|h: axum::http::HeaderMap| async move {
+                    let v = |k: &str| {
+                        h.get(k)
+                            .and_then(|v| v.to_str().ok())
+                            .unwrap_or("")
+                            .to_owned()
+                    };
+                    (
+                        [(CONTENT_TYPE, "text/html")],
+                        format!(
+                            "{}|{}|{}|{}",
+                            v("user-agent"),
+                            v("accept-language"),
+                            v("accept-encoding"),
+                            v("sec-fetch-mode")
+                        ),
+                    )
+                }),
+            )
+            .route(
+                "/picky",
+                // like Cloudflare: browser User-Agent with a non-browser TLS → refused
+                get(|h: axum::http::HeaderMap| async move {
+                    let ua = h
+                        .get("user-agent")
+                        .and_then(|v| v.to_str().ok())
+                        .unwrap_or("");
+                    if ua.contains("Firefox") {
+                        (
+                            axum::http::StatusCode::OK,
+                            [(CONTENT_TYPE, "text/html")],
+                            "<script src=\"/cdn-cgi/challenge-platform/x.js\"></script>".to_owned(),
+                        )
+                    } else {
+                        (
+                            axum::http::StatusCode::OK,
+                            [(CONTENT_TYPE, "text/html")],
+                            format!("<html>welcome {ua}</html>"),
+                        )
+                    }
+                }),
+            )
+            .route(
                 "/blocked",
                 get(|| async {
                     (
@@ -285,7 +415,7 @@ mod tests {
     #[tokio::test]
     async fn html_only_and_size_limit() {
         let (base, task) = server().await;
-        let f = Fetcher::new(crate::http::test_client());
+        let f = Fetcher::new(crate::http::test_client(), DEFAULT_USER_AGENT);
         let p = f.get(&url(&base, "/moved")).await.unwrap();
         assert_eq!(p.url.path(), "/");
         assert!(p.html.contains("é"));
@@ -301,6 +431,25 @@ mod tests {
                 .unwrap_err()
                 .contains("larger")
         );
+        // a few KB of gzip inflating past the limit
+        assert!(
+            f.get(&url(&base, "/bomb"))
+                .await
+                .unwrap_err()
+                .contains("larger")
+        );
+        // browser headers
+        let h = f.get(&url(&base, "/headers")).await.unwrap().html;
+        let parts: Vec<&str> = h.split('|').collect();
+        assert_eq!(parts[0], DEFAULT_USER_AGENT);
+        assert!(parts[1].starts_with("fr-FR"));
+        assert!(parts[2].contains("gzip") && parts[2].contains("br"), "{h}");
+        assert_eq!(parts[3], "navigate");
+        // challenge for the browser identity: asked again with the honest one
+        // (fresh fetcher: the requests above used this server's page budget)
+        let fresh = Fetcher::new(crate::http::test_client(), DEFAULT_USER_AGENT);
+        let p = fresh.get(&url(&base, "/picky")).await.unwrap();
+        assert!(!p.refused() && p.html.contains("shopguard-worker"), "{p:?}");
         // an error comes back with its status, even when it is not HTML
         let p = f.get(&url(&base, "/blocked")).await.unwrap();
         assert_eq!((p.status, p.html.as_str()), (403, ""));
@@ -310,7 +459,7 @@ mod tests {
     #[tokio::test]
     async fn cache_and_budget() {
         let (base, task) = server().await;
-        let f = Fetcher::new(crate::http::test_client());
+        let f = Fetcher::new(crate::http::test_client(), DEFAULT_USER_AGENT);
         // cached: does not use the budget again
         for _ in 0..10 {
             f.get(&url(&base, "/")).await.unwrap();
@@ -325,6 +474,19 @@ mod tests {
                 .contains("budget")
         );
         task.abort();
+    }
+
+    #[test]
+    fn challenge_pages() {
+        assert!(is_challenge(
+            r#"<title>Just a moment...</title><script src="/cdn-cgi/challenge-platform/h/b/orchestrate/x"></script>"#
+        ));
+        assert!(is_challenge(
+            r#"<script src="https://ct.captcha-delivery.com/c.js"></script>"#
+        ));
+        assert!(!is_challenge("<html><h1>Boutique</h1></html>"));
+        let big = format!("{}cf-chl-", "x".repeat(70 * 1024));
+        assert!(!is_challenge(&big));
     }
 
     #[test]
