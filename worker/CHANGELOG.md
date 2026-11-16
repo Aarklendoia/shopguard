@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/Aarklendoia/shopguard/compare/worker-v0.3.1...worker-v0.4.0) (2026-11-16)
+
+
+### Features
+
+* **worker:** hardened page fetcher and home page analyzer ([#42](https://github.com/Aarklendoia/shopguard/issues/42)) ([8a5fca0](https://github.com/Aarklendoia/shopguard/commit/8a5fca0caf63f8c3d3f5f632fa34378eaebf14dc))
+
 ## [0.3.1](https://github.com/Aarklendoia/shopguard/compare/worker-v0.3.0...worker-v0.3.1) (2026-11-13)
 
 
