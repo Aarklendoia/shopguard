@@ -116,6 +116,18 @@ pub fn client() -> Client {
         .expect("static HTTP client configuration")
 }
 
+/// Client for tests against a server on loopback: plain HTTP, no address filter.
+#[cfg(test)]
+pub fn test_client() -> Client {
+    Client::builder()
+        .tls_backend_preconfigured(tls())
+        .redirect(redirect::Policy::limited(MAX_REDIRECTS))
+        .no_proxy()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .expect("static HTTP client configuration")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -7,9 +7,11 @@ mod analysis;
 mod api;
 mod config;
 mod domain;
+mod fetch;
 mod hosting;
 mod http;
 mod netguard;
+mod page;
 mod rdap;
 // used by the SIRET check to come
 #[allow(dead_code)]

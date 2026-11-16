@@ -70,10 +70,13 @@ pub fn analyzers(client: reqwest::Client) -> Vec<Box<dyn Analyzer>> {
         Box::new(crate::rdap::Rdap::new(client.clone(), bootstrap)),
         Box::new(crate::tls::Tls::new()),
     ];
-    match crate::hosting::Hosting::new(client) {
+    match crate::hosting::Hosting::new(client.clone()) {
         Ok(h) => list.push(Box::new(h)),
         Err(e) => warn!("hosting analyzer disabled: {e}"),
     }
+    // one fetcher for every page analyzer: they share its cache and page budget
+    let fetcher = std::sync::Arc::new(crate::fetch::Fetcher::new(client));
+    list.push(Box::new(crate::page::HomePage::new(fetcher)));
     list
 }
 
