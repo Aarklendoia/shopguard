@@ -12,7 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 use crate::store::Store;
 
@@ -75,8 +75,14 @@ pub fn analyzers(client: reqwest::Client, user_agent: Option<&str>) -> Vec<Box<d
         Err(e) => warn!("hosting analyzer disabled: {e}"),
     }
     // one fetcher for every page analyzer: they share its cache and page budget
+    let client_for_directory = client.clone();
     let fetcher = std::sync::Arc::new(crate::fetch::Fetcher::new(client, user_agent));
-    list.push(Box::new(crate::page::HomePage::new(fetcher)));
+    list.push(Box::new(crate::page::HomePage::new(fetcher.clone())));
+    let directory = crate::company::Directory::new(
+        client_for_directory,
+        reqwest::Url::parse(crate::company::API_URL).expect("static URL"),
+    );
+    list.push(Box::new(crate::legal::Legal::new(fetcher, directory)));
     list
 }
 
@@ -84,18 +90,39 @@ pub fn analyzers(client: reqwest::Client, user_agent: Option<&str>) -> Vec<Box<d
 ///
 /// One at a time on purpose: a home network sees a few hundred new domains a day, and
 /// the external services queried (RDAP servers, company directory) rate-limit clients.
+/// Signals of analyzer `i`, run in its own task: a panic (a bug met on a hostile page)
+/// loses this analyzer's signals for this domain, not the pipeline.
+async fn isolated(analyzers: Arc<Vec<Box<dyn Analyzer>>>, i: usize, domain: String) -> Vec<Signal> {
+    let name = analyzers[i].name();
+    let d = domain.clone();
+    match tokio::spawn(async move { analyzers[i].analyze(&d).await }).await {
+        Ok(s) => {
+            debug!(%domain, analyzer = name, signals = s.len());
+            s
+        }
+        Err(e) => {
+            error!(%domain, analyzer = name, "analyzer failed: {e}");
+            vec![Signal {
+                source: name.into(),
+                name: "analysis_failed".into(),
+                weight: 0,
+                detail: "this analysis failed (worker bug)".into(),
+            }]
+        }
+    }
+}
+
 pub async fn run(
     mut rx: mpsc::Receiver<String>,
     store: Arc<Store>,
     analyzers: Vec<Box<dyn Analyzer>>,
 ) {
     info!(analyzers = analyzers.len(), "analysis pipeline started");
+    let analyzers = Arc::new(analyzers);
     while let Some(domain) = rx.recv().await {
         let mut signals = Vec::new();
-        for a in &analyzers {
-            let s = a.analyze(&domain).await;
-            debug!(%domain, analyzer = a.name(), signals = s.len());
-            signals.extend(s);
+        for i in 0..analyzers.len() {
+            signals.extend(isolated(analyzers.clone(), i, domain.clone()).await);
         }
         let verdict = Verdict::new(domain, signals);
         if verdict.score >= 50 {
@@ -108,6 +135,31 @@ pub async fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    struct Fixed(i32);
+    impl Analyzer for Fixed {
+        fn name(&self) -> &'static str {
+            "fixed"
+        }
+        fn analyze<'a>(&'a self, _: &'a str) -> BoxFuture<'a, Vec<Signal>> {
+            Box::pin(async move {
+                assert!(self.0 >= 0, "hostile page");
+                vec![sig(self.0)]
+            })
+        }
+    }
+
+    #[tokio::test]
+    async fn a_panicking_analyzer_loses_only_its_signals() {
+        let list: Arc<Vec<Box<dyn Analyzer>>> =
+            Arc::new(vec![Box::new(Fixed(-1)), Box::new(Fixed(7))]);
+        let failed = isolated(list.clone(), 0, "a.fr".into()).await;
+        assert_eq!(
+            (failed[0].name.as_str(), failed[0].weight),
+            ("analysis_failed", 0)
+        );
+        assert_eq!(isolated(list, 1, "a.fr".into()).await, [sig(7)]);
+    }
 
     fn sig(weight: i32) -> Signal {
         Signal {

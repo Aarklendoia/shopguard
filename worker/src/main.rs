@@ -5,16 +5,17 @@
 
 mod analysis;
 mod api;
+mod company;
 mod config;
 mod domain;
 mod fetch;
 mod hosting;
+mod html;
 mod http;
+mod legal;
 mod netguard;
 mod page;
 mod rdap;
-// used by the SIRET check to come
-#[allow(dead_code)]
 mod siret;
 mod store;
 mod tls;

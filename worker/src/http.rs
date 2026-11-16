@@ -116,6 +116,19 @@ pub fn client() -> Client {
         .expect("static HTTP client configuration")
 }
 
+/// Body of `resp`, refused past `max` bytes (decompressed) instead of filling memory.
+pub async fn read_limited(mut resp: reqwest::Response, max: usize) -> Result<Vec<u8>, String> {
+    let url = resp.url().clone();
+    let mut body = Vec::new();
+    while let Some(chunk) = resp.chunk().await.map_err(|e| format!("{url}: {e}"))? {
+        if body.len() + chunk.len() > max {
+            return Err(format!("{url}: answer larger than {max} bytes"));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
 /// Client for tests against a server on loopback: plain HTTP, no address filter.
 #[cfg(test)]
 pub fn test_client() -> Client {

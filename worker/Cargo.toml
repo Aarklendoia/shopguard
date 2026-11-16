@@ -34,5 +34,7 @@ flate2 = "1"
 codegen-units = 1
 lto = true
 opt-level = "s"
-panic = "abort"
+# unwind: a panic on a hostile page must cost one analyzer, not the worker
+# (analysis::run isolates each analyzer in a task)
+panic = "unwind"
 strip = true
