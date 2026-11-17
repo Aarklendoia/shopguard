@@ -12,7 +12,9 @@
 //! - a number that does not exist, a closed company, or a number with a wrong check
 //!   digit weigh heavily towards a fake shop;
 //! - no number at all weighs only for French sites (`.fr`, or a page in French): other
-//!   countries have other registries and rules.
+//!   countries have other registries and rules. A VAT number of another EU country (a
+//!   shop of that country selling in French) is checked in VIES ([`crate::vies`]): valid
+//!   weighs a little towards a legitimate shop, invalid like a wrong check digit.
 //!
 //! Identifiers of the web host (also mandatory in the legal notice) are skipped.
 
@@ -25,6 +27,7 @@ use crate::analysis::{Analyzer, BoxFuture, Signal};
 use crate::company::{Company, Directory, Lookup};
 use crate::fetch::{Fetcher, shop_evidence};
 use crate::html::{self, Link, fold};
+use crate::vies::{Vat, Vies};
 use crate::{domain, page, rdap, siret};
 
 const SOURCE: &str = "legal";
@@ -35,6 +38,9 @@ const RECENT_DAYS: u64 = 365;
 const CLOSED_WEIGHT: i32 = 30;
 const UNKNOWN_WEIGHT: i32 = 30;
 const INVALID_WEIGHT: i32 = 25;
+/// Valid VAT number of another EU country: like an active French company, but the
+/// name is rarely given to compare (and fake shops copy numbers), hence less.
+const VAT_VALID_WEIGHT: i32 = -10;
 const MISSING_WEIGHT: i32 = 15;
 /// Pages read after the home page.
 const MAX_PAGES: usize = 3;
@@ -46,7 +52,17 @@ pub enum Id {
     Valid(String),
     /// Written as an identifier, but with a wrong check digit.
     Invalid(String),
+    /// VAT number of another EU country (`SK2021375994`), not checked.
+    Foreign(String),
 }
+
+/// EU VAT country prefixes other than France (Greece is `EL`).
+const EU_VAT: &[&str] = &[
+    "at", "be", "bg", "cy", "cz", "de", "dk", "ee", "el", "es", "fi", "hr", "hu", "ie", "it", "lt",
+    "lu", "lv", "mt", "nl", "pl", "pt", "ro", "se", "si", "sk",
+];
+/// Digits of an EU VAT number after its prefix.
+const EU_VAT_DIGITS: std::ops::RangeInclusive<usize> = 8..=12;
 
 const KEYWORDS: &[&str] = &[
     "siret",
@@ -57,6 +73,14 @@ const KEYWORDS: &[&str] = &[
     "registre du commerce",
     "tva",
     "vat",
+    // VAT in other EU languages: German, Italian, Spanish, Dutch, Slovak/Czech, Polish
+    "ust",
+    "umsatzsteuer",
+    "iva",
+    "btw",
+    "dph",
+    "dic",
+    "nip",
 ];
 
 fn floor(s: &str, mut i: usize) -> usize {
@@ -99,6 +123,39 @@ fn after_keyword(window: &str) -> Option<Id> {
     let start = window.find(|c: char| c.is_ascii_digit())?;
     let groups = digit_groups(&window[start..]);
     let all: String = groups.concat();
+    // VAT number of another EU country: its prefix right before the digits (Austria
+    // adds a U: ATU12345678)
+    let head = window[..start].trim_end();
+    let (head, u) = match head.strip_suffix("atu") {
+        Some(h) => (&head[..h.len() + 2], "U"),
+        None => (head, ""),
+    };
+    if let Some(cc) = EU_VAT.iter().find(|cc| {
+        head.ends_with(*cc) && !head[..head.len() - 2].ends_with(|c: char| c.is_alphanumeric())
+    }) && EU_VAT_DIGITS.contains(&all.len())
+    {
+        // the Netherlands end with B and two digits: NL123456789B01
+        let mut suffix = String::new();
+        if *cc == "nl" {
+            let mut n = 0;
+            let tail = window[start..].trim_start_matches(|c: char| {
+                let digit = c.is_ascii_digit() && n < all.len();
+                n += usize::from(digit);
+                digit || (n < all.len() && is_sep(c))
+            });
+            let tail = tail.trim_start_matches(is_sep);
+            if let Some(b) = tail.get(..3)
+                && b.starts_with('b')
+                && b[1..].bytes().all(|c| c.is_ascii_digit())
+            {
+                suffix = b.to_ascii_uppercase();
+            }
+        }
+        return Some(Id::Foreign(format!(
+            "{}{u}{all}{suffix}",
+            cc.to_ascii_uppercase()
+        )));
+    }
     // intra-community VAT number: FR, a 2-digit key, the SIREN
     if all.len() == 11 && window[..start].trim_end().ends_with("fr") {
         let (key, siren) = all.split_at(2);
@@ -277,11 +334,16 @@ pub fn legal_links(html: &str, base: &Url, platform: &[&str]) -> Vec<Url> {
 pub struct Legal {
     fetcher: Arc<Fetcher>,
     directory: Directory,
+    vies: Vies,
 }
 
 impl Legal {
-    pub fn new(fetcher: Arc<Fetcher>, directory: Directory) -> Self {
-        Self { fetcher, directory }
+    pub fn new(fetcher: Arc<Fetcher>, directory: Directory, vies: Vies) -> Self {
+        Self {
+            fetcher,
+            directory,
+            vies,
+        }
     }
 }
 
@@ -398,7 +460,7 @@ impl Analyzer for Legal {
                 .iter()
                 .filter_map(|(id, u)| match id {
                     Id::Valid(s) => Some((s.as_str(), u)),
-                    Id::Invalid(_) => None,
+                    Id::Invalid(_) | Id::Foreign(_) => None,
                 })
                 .take(2)
                 .collect();
@@ -430,12 +492,41 @@ impl Analyzer for Legal {
             if let Some(s) = worst {
                 return vec![s];
             }
-            if let Some((Id::Invalid(n), url)) = ids.first() {
+            if let Some((Id::Invalid(n), url)) =
+                ids.iter().find(|(id, _)| matches!(id, Id::Invalid(_)))
+            {
                 return vec![signal(
                     "legal_number_invalid",
                     INVALID_WEIGHT,
                     format!("company number {n} given on {url} has a wrong check digit"),
                 )];
+            }
+            if let Some((Id::Foreign(n), url)) =
+                ids.iter().find(|(id, _)| matches!(id, Id::Foreign(_)))
+            {
+                return vec![match self.vies.check(n).await {
+                    Ok(Vat::Valid(name)) => signal(
+                        "legal_vat_valid",
+                        VAT_VALID_WEIGHT,
+                        format!(
+                            "VAT number {n} given on {url} is valid (VIES{})",
+                            name.map(|n| format!(": {n}")).unwrap_or_default()
+                        ),
+                    ),
+                    Ok(Vat::Invalid) => signal(
+                        "legal_vat_invalid",
+                        INVALID_WEIGHT,
+                        format!("VAT number {n} given on {url} is not valid (VIES)"),
+                    ),
+                    Err(e) => {
+                        debug!(%domain, "VIES: {e}");
+                        signal(
+                            "legal_check_failed",
+                            0,
+                            format!("VAT number {n} given on {url} could not be checked: {e}"),
+                        )
+                    }
+                }];
             }
             let where_ = match &legal_page {
                 Some(u) => format!("on the home page nor on {u}"),
@@ -486,6 +577,41 @@ mod tests {
         assert!(identifiers("SIRET en cours. Tél : 01 23 45 67 89").is_empty());
         assert!(identifiers("nos parcs 306 138 900").is_empty());
         assert!(identifiers("site hébergé par Gandi, RCS Paris 423 093 459").is_empty());
+    }
+
+    #[test]
+    fn other_eu_vat_numbers() {
+        // tomarcreation.com: a Slovak company selling in French
+        let t = "Tomar Creation s.r.o IČO : 36299634 DIČ : 2021375994 IČ DPH : SK2021375994                  Société enregistrée en Slovaquie Siret : 2021375994";
+        assert_eq!(identifiers(t), [Id::Foreign("SK2021375994".into())]);
+        assert_eq!(
+            identifiers("USt-IdNr.: DE 123 456 789"),
+            [Id::Foreign("DE123456789".into())]
+        );
+        assert_eq!(
+            identifiers("UID / VAT: ATU12345678"),
+            [Id::Foreign("ATU12345678".into())]
+        );
+        assert_eq!(
+            identifiers("Partita IVA IT01234567890"),
+            [Id::Foreign("IT01234567890".into())]
+        );
+        // a French number stays French; letters glued before are no prefix
+        assert_eq!(
+            identifiers("TVA FR51306138900"),
+            [Id::Valid("306138900".into())]
+        );
+        assert_eq!(
+            identifiers("BTW-nummer: NL 8660.85.129.B01 KvK 12345678"),
+            [Id::Foreign("NL866085129B01".into())]
+        );
+        assert_eq!(
+            identifiers("TVA NL866085129"),
+            [Id::Foreign("NL866085129".into())]
+        );
+        assert!(identifiers("VAT included, code BESK2021375994").is_empty());
+        // "dic" as a word start only
+        assert!(identifiers("indice 123456789").is_empty());
     }
 
     /// Every cut of messy HTML full of multi-byte characters goes through every reader

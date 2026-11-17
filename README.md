@@ -23,7 +23,7 @@ it can check right away.
 - **Privacy**: the plugin sends **domain names only**, never client addresses or timestamps.
   The worker queries public services about those domains (RDAP registries, Certificate
   Transparency logs through crt.sh and Cert Spotter, the Internet Archive's Wayback Machine, the French
-  company directory) and fetches the sites themselves, from the Docker host. The hosting network is looked up by IP address only (Team Cymru DNS),
+  company directory, the EU VAT number check VIES) and fetches the sites themselves, from the Docker host. The hosting network is looked up by IP address only (Team Cymru DNS),
   and the DROP lists of criminal networks and the current Firefox version (for the
   User-Agent of page downloads) are downloaded once a day.
 - **Observe first**: by default suspicious domains are only listed in the interface. Small
@@ -43,6 +43,7 @@ it can check right away.
 worker/                          shopguard-worker (Rust)
   src/api.rs                     HTTP API used by the plugin
   src/company.rs                 French company directory (SIREN exists, active?)
+  src/vies.rs                    EU VAT numbers checked in VIES
   src/analysis.rs                scoring pipeline, Analyzer trait
   src/domain.rs                  registrable domain (Public Suffix List)
   src/http.rs                    HTTP client of the analyzers (HTTPS, public addresses only)
