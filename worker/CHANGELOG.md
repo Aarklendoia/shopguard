@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.0](https://github.com/Aarklendoia/shopguard/compare/worker-v0.6.0...worker-v0.7.0) (2026-11-17)
+
+
+### Features
+
+* **worker:** catalogue hotlinked from another Shopify store ([#53](https://github.com/Aarklendoia/shopguard/issues/53)) ([2c6c70b](https://github.com/Aarklendoia/shopguard/commit/2c6c70b0d938726d05207a21502784dc92ccc7e2))
+* **worker:** fake shop kit weighs 45 ([#55](https://github.com/Aarklendoia/shopguard/issues/55)) ([e4d6fe6](https://github.com/Aarklendoia/shopguard/commit/e4d6fe6f7f7d239bafc8f3369574ee3be02c54d0))
+
 ## [0.6.0](https://github.com/Aarklendoia/shopguard/compare/worker-v0.5.1...worker-v0.6.0) (2026-11-17)
 
 
