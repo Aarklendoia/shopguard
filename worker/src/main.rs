@@ -19,6 +19,7 @@ mod legal;
 mod netguard;
 mod page;
 mod rdap;
+mod shop;
 mod siret;
 mod store;
 mod tls;
