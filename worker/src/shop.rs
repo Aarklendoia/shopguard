@@ -37,7 +37,11 @@ const KIT_PHRASES: &[&str] = &[
 ];
 /// One phrase can be a coincidence ("limited time offer").
 const KIT_MIN: usize = 2;
-const KIT_WEIGHT: i32 = 30;
+/// Two phrases of the kit word for word are close to proof on their own: no real shop
+/// shows one. With the hotlinked catalogue of the same kit, one more sign (a young or
+/// unarchived domain, a uniform discount) reaches the threshold, even when crt.sh or the
+/// Internet Archive did not answer.
+const KIT_WEIGHT: i32 = 45;
 
 /// Two prices closer than this (bytes of text) are a sale price and its crossed-out
 /// price.
@@ -347,7 +351,7 @@ mod tests {
         let t = kit_home(PRODUCTS);
         let s = signals("", &t);
         assert_eq!(s[0].name, "shop_kit");
-        assert_eq!(s[0].weight, 30);
+        assert_eq!(s[0].weight, KIT_WEIGHT);
         assert!(
             s[0].detail
                 .contains("fresh arrivals and customer favorites")
