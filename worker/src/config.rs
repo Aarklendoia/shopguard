@@ -22,6 +22,25 @@ pub struct Config {
     pub user_agent: Option<String>,
 }
 
+/// `SHOPGUARD_USER_AGENT`, trimmed; `None` when unset or blank.
+fn user_agent(get: impl Fn(&str) -> Option<String>) -> Result<Option<String>, String> {
+    let user_agent = get("SHOPGUARD_USER_AGENT")
+        .map(|u| u.trim().to_owned())
+        .filter(|u| !u.is_empty());
+    if user_agent
+        .as_deref()
+        .is_some_and(|u| u.chars().any(|c| c.is_control()))
+    {
+        return Err("SHOPGUARD_USER_AGENT: control characters are not allowed".into());
+    }
+    Ok(user_agent)
+}
+
+/// `SHOPGUARD_USER_AGENT` alone, for `shopguard-worker check` (no service, no token).
+pub fn user_agent_from_env() -> Result<Option<String>, String> {
+    user_agent(|k| std::env::var(k).ok())
+}
+
 impl Config {
     pub fn from_env() -> Result<Self, String> {
         Self::from_lookup(|k| std::env::var(k).ok())
@@ -68,15 +87,7 @@ impl Config {
                     format!("SHOPGUARD_MAX_DOMAINS={m}: expected a positive number")
                 })?,
             };
-        let user_agent = get("SHOPGUARD_USER_AGENT")
-            .map(|u| u.trim().to_owned())
-            .filter(|u| !u.is_empty());
-        if user_agent
-            .as_deref()
-            .is_some_and(|u| u.chars().any(|c| c.is_control()))
-        {
-            return Err("SHOPGUARD_USER_AGENT: control characters are not allowed".into());
-        }
+        let user_agent = user_agent(&get)?;
         Ok(Self {
             listen,
             token,

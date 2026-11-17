@@ -1,10 +1,12 @@
 //! shopguard-worker: scores the domains an OPNsense resolver sees and flags fake shops.
 //!
 //! `shopguard-worker` runs the service; `shopguard-worker healthcheck` queries its
-//! `/healthz` and exits 0 or 1 (the image has no shell or curl for a health check).
+//! `/healthz` and exits 0 or 1 (the image has no shell or curl for a health check);
+//! `shopguard-worker check DOMAIN...` analyzes domains once and prints their verdicts.
 
 mod analysis;
 mod api;
+mod cli;
 mod company;
 mod config;
 mod domain;
@@ -31,6 +33,18 @@ use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("check") {
+        // stdout is for the verdicts
+        tracing_subscriber::fmt()
+            .with_env_filter(
+                EnvFilter::try_from_env("SHOPGUARD_LOG").unwrap_or_else(|_| EnvFilter::new("warn")),
+            )
+            .with_writer(std::io::stderr)
+            .init();
+        return cli::check(&args[1..]).await;
+    }
+
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_env("SHOPGUARD_LOG").unwrap_or_else(|_| EnvFilter::new("info")),
@@ -45,7 +59,7 @@ async fn main() -> ExitCode {
         }
     };
 
-    if std::env::args().nth(1).as_deref() == Some("healthcheck") {
+    if args.first().map(String::as_str) == Some("healthcheck") {
         return healthcheck(cfg.listen).await;
     }
 
