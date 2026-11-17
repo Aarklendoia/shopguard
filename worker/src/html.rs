@@ -68,6 +68,38 @@ pub fn decode(s: &str) -> String {
                 "egrave" => Some('è'),
                 "agrave" => Some('à'),
                 "ccedil" => Some('ç'),
+                // prices and shop text: currencies, other accents, typography
+                "euro" => Some('€'),
+                "pound" => Some('£'),
+                "yen" => Some('¥'),
+                "cent" => Some('¢'),
+                "acirc" => Some('â'),
+                "ecirc" => Some('ê'),
+                "icirc" => Some('î'),
+                "ocirc" => Some('ô'),
+                "ucirc" => Some('û'),
+                "ugrave" => Some('ù'),
+                "auml" => Some('ä'),
+                "ouml" => Some('ö'),
+                "uuml" => Some('ü'),
+                "Auml" => Some('Ä'),
+                "Ouml" => Some('Ö'),
+                "Uuml" => Some('Ü'),
+                "szlig" => Some('ß'),
+                "Eacute" => Some('É'),
+                "laquo" => Some('«'),
+                "raquo" => Some('»'),
+                "lsquo" => Some('‘'),
+                "rsquo" => Some('’'),
+                "ldquo" => Some('“'),
+                "rdquo" => Some('”'),
+                "ndash" => Some('–'),
+                "mdash" => Some('—'),
+                "hellip" => Some('…'),
+                "times" => Some('×'),
+                "copy" => Some('©'),
+                "reg" => Some('®'),
+                "deg" => Some('°'),
                 _ => name
                     .strip_prefix("#x")
                     .or_else(|| name.strip_prefix("#X"))
@@ -193,6 +225,11 @@ mod tests {
         assert_eq!(t, "SIRET : 732 829 320 00074 Résumé & fin unclosed");
         assert_eq!(text("a<script>never closed"), "a");
         assert_eq!(decode("&bogus; &#xZZ; &"), "&bogus; &#xZZ; &");
+        // WooCommerce prices
+        assert_eq!(
+            decode("&euro;&nbsp;27,38 &ndash; &euro;109,53"),
+            "€\u{a0}27,38 – €109,53"
+        );
     }
 
     #[test]
