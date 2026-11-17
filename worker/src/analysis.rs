@@ -84,6 +84,7 @@ pub fn analyzers(client: reqwest::Client, user_agent: Option<&str>) -> Vec<Box<d
     let client_for_directory = client.clone();
     let fetcher = std::sync::Arc::new(crate::fetch::Fetcher::new(client, user_agent));
     list.push(Box::new(crate::page::HomePage::new(fetcher.clone())));
+    list.push(Box::new(crate::shop::Shop::new(fetcher.clone())));
     let directory = crate::company::Directory::new(
         client_for_directory,
         reqwest::Url::parse(crate::company::API_URL).expect("static URL"),
