@@ -384,9 +384,16 @@ pub fn shop_evidence(html: &str) -> Vec<&'static str> {
     let h = html.to_ascii_lowercase();
     let mut out = Vec::new();
     let platforms: &[(&str, &[&str])] = &[
+        // a Shopify store, not a page showing images of one (see `shop::hotlinked_store`)
         (
             "Shopify",
-            &["cdn.shopify.com", "shopify.theme", "myshopify.com"],
+            &[
+                "shopify.theme",
+                "shopify.shop",
+                "myshopify.com",
+                "/cdn/shop/",
+                "cdn.shopify.com/shopifycloud",
+            ],
         ),
         (
             "WooCommerce",
@@ -422,6 +429,11 @@ pub fn shop_evidence(html: &str) -> Vec<&'static str> {
         if marks.iter().any(|m| h.contains(m)) {
             out.push(*name);
         }
+    }
+    // product photos of a Shopify store on a site that is not one: a copied catalogue,
+    // still a shop
+    if !out.contains(&"Shopify") && h.contains("cdn.shopify.com/s/files/") {
+        out.push("Shopify product images");
     }
     if h.contains("schema.org/product")
         || h.contains("\"@type\":\"product\"")
@@ -717,9 +729,16 @@ mod tests {
     fn shops_are_recognized() {
         assert_eq!(
             shop_evidence(
-                r#"<script src="https://cdn.shopify.com/s/x.js"></script><a href="/cart">"#
+                r#"<script src="https://cdn.shopify.com/shopifycloud/x.js"></script><a href="/cart">"#
             ),
             ["Shopify", "cart"]
+        );
+        // a Next.js fake showing the photos of another store (meinherzschlag.shop)
+        assert_eq!(
+            shop_evidence(
+                r#"<img src="https://cdn.shopify.com/s/files/1/0918/0712/1748/files/a.jpg"><a href="/cart">"#
+            ),
+            ["Shopify product images", "cart"]
         );
         assert_eq!(
             shop_evidence(r#"<script type="application/ld+json">{"@type": "Product"}</script>"#),
