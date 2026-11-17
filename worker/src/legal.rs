@@ -353,7 +353,7 @@ impl Analyzer for Legal {
         SOURCE
     }
 
-    fn analyze<'a>(&'a self, domain: &'a str) -> BoxFuture<'a, Vec<Signal>> {
+    fn analyze<'a>(&'a self, domain: &'a str, _: &'a [Signal]) -> BoxFuture<'a, Vec<Signal>> {
         Box::pin(async move {
             // the home page comes from the fetcher's cache: the page analyzer got it
             let Ok(home) = page::home(&self.fetcher, domain).await else {

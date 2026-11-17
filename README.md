@@ -14,7 +14,7 @@ it can check right away.
 ┌───────────────────────────────┐                 ┌───────────────────────────────────┐
 │ Unbound ──> os-shopguard      │  domain names   │ shopguard-worker                  │
 │             collects new      │ ──────────────> │  domain:  RDAP age, certificate,  │
-│             registrable       │                 │           hosting (ASN), CT logs  │
+│             registrable       │                 │           hosting, CT, archives   │
 │             domains           │  verdicts,      │  page:    legal notice, SIRET,    │
 │ Unbound <── blocklist         │ <────────────── │           shop heuristics         │
 └───────────────────────────────┘   blocklist     └───────────────────────────────────┘
@@ -22,8 +22,8 @@ it can check right away.
 
 - **Privacy**: the plugin sends **domain names only**, never client addresses or timestamps.
   The worker queries public services about those domains (RDAP registries, Certificate
-  Transparency logs, the French company directory) and fetches the sites themselves, from
-  the Docker host. The hosting network is looked up by IP address only (Team Cymru DNS),
+  Transparency logs through crt.sh, the Internet Archive's Wayback Machine, the French
+  company directory) and fetches the sites themselves, from the Docker host. The hosting network is looked up by IP address only (Team Cymru DNS),
   and the DROP lists of criminal networks and the current Firefox version (for the
   User-Agent of page downloads) are downloaded once a day.
 - **Observe first**: by default suspicious domains are only listed in the interface. Small
