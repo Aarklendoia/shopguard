@@ -23,6 +23,7 @@ mod shop;
 mod siret;
 mod store;
 mod tls;
+mod vies;
 
 use std::process::ExitCode;
 use std::sync::Arc;
