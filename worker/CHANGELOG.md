@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/Aarklendoia/shopguard/compare/worker-v0.5.0...worker-v0.5.1) (2026-11-17)
+
+
+### Bug Fixes
+
+* **worker:** legal notice of redirected domains, platform names are not shops ([#46](https://github.com/Aarklendoia/shopguard/issues/46)) ([e62bdd3](https://github.com/Aarklendoia/shopguard/commit/e62bdd31a0ebf085a812e59c57946c51f6f99a9e))
+
 ## [0.5.0](https://github.com/Aarklendoia/shopguard/compare/worker-v0.4.0...worker-v0.5.0) (2026-11-16)
 
 
