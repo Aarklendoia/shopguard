@@ -68,7 +68,7 @@ impl Analyzer for HomePage {
         SOURCE
     }
 
-    fn analyze<'a>(&'a self, domain: &'a str) -> BoxFuture<'a, Vec<Signal>> {
+    fn analyze<'a>(&'a self, domain: &'a str, _: &'a [Signal]) -> BoxFuture<'a, Vec<Signal>> {
         Box::pin(async move {
             match home(&self.fetcher, domain).await {
                 Ok(page) => {

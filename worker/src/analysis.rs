@@ -58,9 +58,10 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 pub trait Analyzer: Send + Sync {
     fn name(&self) -> &'static str;
-    /// Signals for `domain` (a registrable domain). Errors are reported as signals of
-    /// weight 0 rather than failing the whole analysis.
-    fn analyze<'a>(&'a self, domain: &'a str) -> BoxFuture<'a, Vec<Signal>>;
+    /// Signals for `domain` (a registrable domain), knowing the `earlier` signals of the
+    /// analyzers run before this one (e.g. not weighting an age RDAP already weighted).
+    /// Errors are reported as signals of weight 0 rather than failing the whole analysis.
+    fn analyze<'a>(&'a self, domain: &'a str, earlier: &'a [Signal]) -> BoxFuture<'a, Vec<Signal>>;
 }
 
 /// Analyzers enabled in this build, in the order they run.
@@ -74,6 +75,11 @@ pub fn analyzers(client: reqwest::Client, user_agent: Option<&str>) -> Vec<Box<d
         Ok(h) => list.push(Box::new(h)),
         Err(e) => warn!("hosting analyzer disabled: {e}"),
     }
+    list.push(Box::new(crate::history::History::new(
+        client.clone(),
+        reqwest::Url::parse(crate::history::WAYBACK_URL).expect("static URL"),
+        reqwest::Url::parse(crate::history::CRTSH_URL).expect("static URL"),
+    )));
     // one fetcher for every page analyzer: they share its cache and page budget
     let client_for_directory = client.clone();
     let fetcher = std::sync::Arc::new(crate::fetch::Fetcher::new(client, user_agent));
@@ -92,10 +98,15 @@ pub fn analyzers(client: reqwest::Client, user_agent: Option<&str>) -> Vec<Box<d
 /// the external services queried (RDAP servers, company directory) rate-limit clients.
 /// Signals of analyzer `i`, run in its own task: a panic (a bug met on a hostile page)
 /// loses this analyzer's signals for this domain, not the pipeline.
-async fn isolated(analyzers: Arc<Vec<Box<dyn Analyzer>>>, i: usize, domain: String) -> Vec<Signal> {
+async fn isolated(
+    analyzers: Arc<Vec<Box<dyn Analyzer>>>,
+    i: usize,
+    domain: String,
+    earlier: Vec<Signal>,
+) -> Vec<Signal> {
     let name = analyzers[i].name();
     let d = domain.clone();
-    match tokio::spawn(async move { analyzers[i].analyze(&d).await }).await {
+    match tokio::spawn(async move { analyzers[i].analyze(&d, &earlier).await }).await {
         Ok(s) => {
             debug!(%domain, analyzer = name, signals = s.len());
             s
@@ -116,7 +127,8 @@ async fn isolated(analyzers: Arc<Vec<Box<dyn Analyzer>>>, i: usize, domain: Stri
 pub async fn verdict(analyzers: &Arc<Vec<Box<dyn Analyzer>>>, domain: String) -> Verdict {
     let mut signals = Vec::new();
     for i in 0..analyzers.len() {
-        signals.extend(isolated(analyzers.clone(), i, domain.clone()).await);
+        let s = isolated(analyzers.clone(), i, domain.clone(), signals.clone()).await;
+        signals.extend(s);
     }
     Verdict::new(domain, signals)
 }
@@ -146,7 +158,7 @@ mod tests {
         fn name(&self) -> &'static str {
             "fixed"
         }
-        fn analyze<'a>(&'a self, _: &'a str) -> BoxFuture<'a, Vec<Signal>> {
+        fn analyze<'a>(&'a self, _: &'a str, _: &'a [Signal]) -> BoxFuture<'a, Vec<Signal>> {
             Box::pin(async move {
                 assert!(self.0 >= 0, "hostile page");
                 vec![sig(self.0)]
@@ -158,12 +170,12 @@ mod tests {
     async fn a_panicking_analyzer_loses_only_its_signals() {
         let list: Arc<Vec<Box<dyn Analyzer>>> =
             Arc::new(vec![Box::new(Fixed(-1)), Box::new(Fixed(7))]);
-        let failed = isolated(list.clone(), 0, "a.fr".into()).await;
+        let failed = isolated(list.clone(), 0, "a.fr".into(), Vec::new()).await;
         assert_eq!(
             (failed[0].name.as_str(), failed[0].weight),
             ("analysis_failed", 0)
         );
-        assert_eq!(isolated(list, 1, "a.fr".into()).await, [sig(7)]);
+        assert_eq!(isolated(list, 1, "a.fr".into(), Vec::new()).await, [sig(7)]);
     }
 
     fn sig(weight: i32) -> Signal {

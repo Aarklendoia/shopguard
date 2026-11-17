@@ -318,7 +318,7 @@ impl Analyzer for Hosting {
         SOURCE
     }
 
-    fn analyze<'a>(&'a self, domain: &'a str) -> BoxFuture<'a, Vec<Signal>> {
+    fn analyze<'a>(&'a self, domain: &'a str, _: &'a [Signal]) -> BoxFuture<'a, Vec<Signal>> {
         Box::pin(async move {
             // no public address: the TLS analyzer already says so
             let Some(ip) = Self::address(domain).await else {

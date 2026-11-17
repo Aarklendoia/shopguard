@@ -11,6 +11,7 @@ mod company;
 mod config;
 mod domain;
 mod fetch;
+mod history;
 mod hosting;
 mod html;
 mod http;

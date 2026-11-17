@@ -185,6 +185,17 @@ pub fn date(days: u64) -> String {
 }
 
 /// Signals for a lookup made on day `today`.
+/// Registration day (days since 1970) given by the `domain_age_days` signal of this
+/// analyzer among `signals`, for the analyzers that run after it.
+pub fn registered_day(signals: &[Signal]) -> Option<u64> {
+    let s = signals
+        .iter()
+        .find(|s| s.source == SOURCE && s.name == "domain_age_days")?;
+    // "registered N days ago (YYYY-MM-DD)"
+    let (_, date) = s.detail.rsplit_once('(')?;
+    epoch_days(date.strip_suffix(')')?)
+}
+
 fn signals(lookup: &Lookup, today: u64) -> Vec<Signal> {
     let (registered, reregistered) = match lookup {
         Lookup::NotFound => {
@@ -383,7 +394,7 @@ impl Analyzer for Rdap {
         SOURCE
     }
 
-    fn analyze<'a>(&'a self, domain: &'a str) -> BoxFuture<'a, Vec<Signal>> {
+    fn analyze<'a>(&'a self, domain: &'a str, _: &'a [Signal]) -> BoxFuture<'a, Vec<Signal>> {
         Box::pin(async move {
             if under_private_suffix(domain) {
                 return Vec::new();
@@ -533,6 +544,25 @@ mod tests {
             weights(&Lookup::NotFound, t),
             vec![("domain_not_found".into(), 0)]
         );
+    }
+
+    /// The analyzers after this one read the registration day back from its signal.
+    #[test]
+    fn registration_day_for_later_analyzers() {
+        let t = 20_000;
+        let l = Lookup::Found {
+            registered: Some(t - 45),
+            reregistered: None,
+        };
+        assert_eq!(registered_day(&signals(&l, t)), Some(t - 45));
+        assert_eq!(registered_day(&signals(&Lookup::NotFound, t)), None);
+        let other = Signal {
+            source: "tls".into(),
+            name: "domain_age_days".into(),
+            weight: 0,
+            detail: "registered 3 days ago (2026-01-01)".into(),
+        };
+        assert_eq!(registered_day(&[other]), None);
     }
 
     #[test]
