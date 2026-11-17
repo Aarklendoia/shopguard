@@ -10,7 +10,11 @@
 //!   show at least two of them, no real shop does;
 //! - **uniform discount**: the kit copies the catalogue of a real shop and marks every
 //!   product down by about the same ratio (−20 to −30 %): 20 of 35 fakes, no real shop
-//!   (sales have tiers, and leave products at full price).
+//!   (sales have tiers, and leave products at full price);
+//! - **hotlinked catalogue**: the kit is a Next.js site, not a Shopify store, showing the
+//!   product photos of the real store it copies straight from that store's Shopify CDN
+//!   (`cdn.shopify.com/s/files/1/<store>/…`): 26 of 35 fakes, no real shop (a Shopify
+//!   store serves its own photos from `/cdn/shop/` and declares itself).
 
 use std::sync::Arc;
 
@@ -45,6 +49,19 @@ const DISCOUNT_MIN_SHARE: f64 = 0.8;
 const DISCOUNT_MIN_NEAR: f64 = 0.75;
 const DISCOUNT_SPREAD: f64 = 0.05;
 const DISCOUNT_WEIGHT: i32 = 15;
+
+/// Product photos served by another Shopify store, at least this many…
+const HOTLINK_MIN_IMAGES: usize = 5;
+const HOTLINK_WEIGHT: i32 = 20;
+/// …on a page without any of these (lower case): the page is not a Shopify store.
+const SHOPIFY_STORE: &[&str] = &[
+    "shopify.theme",
+    "shopify.shop",
+    "myshopify.com",
+    "/cdn/shop/",
+    "cdn.shopify.com/shopifycloud",
+];
+const SHOPIFY_FILES: &str = "cdn.shopify.com/s/files/1/";
 
 /// Kit phrases found in `text` (any case).
 pub fn kit_phrases(text: &str) -> Vec<&'static str> {
@@ -171,6 +188,43 @@ pub fn uniform_discount(text: &str) -> Option<String> {
     ))
 }
 
+/// Shopify store whose product photos `html` shows without being a Shopify store
+/// itself: its file id (`0918/0712/1748`) and how many photos, if so.
+pub fn hotlinked_store(html: &str) -> Option<(String, usize)> {
+    let h = html.to_ascii_lowercase();
+    if SHOPIFY_STORE.iter().any(|m| h.contains(m)) {
+        return None;
+    }
+    let mut stores: Vec<(String, usize)> = Vec::new();
+    for (i, _) in h.match_indices(SHOPIFY_FILES) {
+        let rest = &h[i + SHOPIFY_FILES.len()..];
+        // `NNNN/NNNN/NNNN/` then `files/` or `products/`
+        let Some(id) = rest.get(..14).filter(|id| {
+            id.bytes().enumerate().all(|(j, b)| {
+                if j == 4 || j == 9 {
+                    b == b'/'
+                } else {
+                    b.is_ascii_digit()
+                }
+            })
+        }) else {
+            continue;
+        };
+        let after = &rest[14..];
+        if !(after.starts_with("/files/") || after.starts_with("/products/")) {
+            continue;
+        }
+        match stores.iter_mut().find(|(s, _)| s == id) {
+            Some((_, n)) => *n += 1,
+            None => stores.push((id.to_owned(), 1)),
+        }
+    }
+    stores
+        .into_iter()
+        .max_by_key(|(_, n)| *n)
+        .filter(|(_, n)| *n >= HOTLINK_MIN_IMAGES)
+}
+
 fn signal(name: &str, weight: i32, detail: String) -> Signal {
     Signal {
         source: SOURCE.into(),
@@ -180,9 +234,19 @@ fn signal(name: &str, weight: i32, detail: String) -> Signal {
     }
 }
 
-/// Signals for the visible text of a shop's home page.
-pub fn signals(text: &str) -> Vec<Signal> {
+/// Signals for the home page of a shop: its HTML and visible text.
+pub fn signals(html: &str, text: &str) -> Vec<Signal> {
     let mut out = Vec::new();
+    if let Some((store, n)) = hotlinked_store(html) {
+        out.push(signal(
+            "catalog_hotlinked",
+            HOTLINK_WEIGHT,
+            format!(
+                "{n} product photos served by another Shopify store (files {store}): \
+                 a catalogue copied from that shop"
+            ),
+        ));
+    }
     let kit = kit_phrases(text);
     if kit.len() >= KIT_MIN {
         out.push(signal(
@@ -227,7 +291,7 @@ impl Analyzer for Shop {
             let Ok(home) = page::home(&self.fetcher, domain).await else {
                 return Vec::new();
             };
-            signals(&html::text(&home.html))
+            signals(&home.html, &html::text(&home.html))
         })
     }
 }
@@ -281,7 +345,7 @@ mod tests {
     #[test]
     fn fake_shop_kit() {
         let t = kit_home(PRODUCTS);
-        let s = signals(&t);
+        let s = signals("", &t);
         assert_eq!(s[0].name, "shop_kit");
         assert_eq!(s[0].weight, 30);
         assert!(
@@ -294,7 +358,7 @@ mod tests {
             "9 of 10 products shown are discounted, 8 of them by 23–28 % (median 26 %)"
         );
         // one phrase is not a kit
-        assert!(signals("Black Friday: limited time offer on everything").is_empty());
+        assert!(signals("", "Black Friday: limited time offer on everything").is_empty());
     }
 
     #[test]
@@ -330,13 +394,56 @@ mod tests {
         assert!(uniform_discount(&t).is_none());
     }
 
+    fn photos(store: &str, n: usize) -> String {
+        (0..n)
+            .map(|i| {
+                format!(
+                    r#"<img src="https://cdn.shopify.com/s/files/1/{store}/files/p{i}.jpg?v=1&width=400">"#
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn hotlinked_catalogue() {
+        // the Next.js fake showing the photos of the store it copies
+        let fake = format!("<html><body>{}</body></html>", photos("0918/0712/1748", 48));
+        assert_eq!(hotlinked_store(&fake), Some(("0918/0712/1748".into(), 48)));
+        let s = signals(&fake, "");
+        assert_eq!(s[0].name, "catalog_hotlinked");
+        assert_eq!(s[0].weight, 20);
+        assert_eq!(
+            s[0].detail,
+            "48 product photos served by another Shopify store (files 0918/0712/1748): \
+             a catalogue copied from that shop"
+        );
+        // a Shopify store showing its own photos from the CDN
+        let store = format!(
+            r#"<script>Shopify.shop = "b02701-d1.myshopify.com";</script>{}"#,
+            photos("0657/1234/5678", 30)
+        );
+        assert_eq!(hotlinked_store(&store), None);
+        // a few photos (a partner's logo, a blog post): not a catalogue
+        assert_eq!(hotlinked_store(&photos("0918/0712/1748", 4)), None);
+        // not a store's file path
+        assert_eq!(
+            hotlinked_store(&"cdn.shopify.com/s/files/1/abcd/0712/1748/files/x ".repeat(9)),
+            None
+        );
+    }
+
     /// Every cut of messy text goes through without panicking.
     #[test]
     fn hostile_text_does_not_panic() {
         let t = "€€1,2.3€ 9999999€ é€é 1,€ ,5€ €12,999 $ £\u{a0}\u{202f}7 €8.31 €10.99";
+        let h = format!("{t}{}é", photos("0918/0712/1748", 6));
+        for (i, _) in h.char_indices() {
+            hotlinked_store(&h[..i]);
+            hotlinked_store(&h[i..]);
+        }
         for (i, _) in t.char_indices() {
-            signals(&t[..i]);
-            signals(&t[i..]);
+            signals(&t[..i], &t[..i]);
+            signals(&t[i..], &t[i..]);
         }
     }
 }
