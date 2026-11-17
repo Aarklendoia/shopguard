@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.6.0](https://github.com/Aarklendoia/shopguard/compare/worker-v0.5.1...worker-v0.6.0) (2026-11-17)
+
+
+### Features
+
+* **worker:** check command, verdicts of domains analyzed once ([#48](https://github.com/Aarklendoia/shopguard/issues/48)) ([0a8d81b](https://github.com/Aarklendoia/shopguard/commit/0a8d81b304865f8bcd4ff31ad6254f4430e546f7))
+* **worker:** domain history from the Internet Archive and crt.sh ([#50](https://github.com/Aarklendoia/shopguard/issues/50)) ([32116c9](https://github.com/Aarklendoia/shopguard/commit/32116c9b1ea3d244967e6a6c528f80de73943c53))
+* **worker:** shop heuristics, fake shop kit and uniform discount ([#51](https://github.com/Aarklendoia/shopguard/issues/51)) ([a64df0a](https://github.com/Aarklendoia/shopguard/commit/a64df0a837fc643261cf26b6e70f056ea4025432))
+
 ## [0.5.1](https://github.com/Aarklendoia/shopguard/compare/worker-v0.5.0...worker-v0.5.1) (2026-11-17)
 
 
