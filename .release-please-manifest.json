@@ -1,4 +1,4 @@
 {
-  "worker": "0.7.0",
+  "worker": "0.8.0",
   "plugin/dns/shopguard": "0.3.0"
 }

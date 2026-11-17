@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.8.0](https://github.com/Aarklendoia/shopguard/compare/worker-v0.7.0...worker-v0.8.0) (2026-11-17)
+
+
+### Features
+
+* **worker:** deep discount on every product shown ([#58](https://github.com/Aarklendoia/shopguard/issues/58)) ([7676dc9](https://github.com/Aarklendoia/shopguard/commit/7676dc958bc19dd9a29770d3aafbddc20e9e42e5))
+* **worker:** German mobile phone only, Cert Spotter when crt.sh has no history ([#56](https://github.com/Aarklendoia/shopguard/issues/56)) ([fded72f](https://github.com/Aarklendoia/shopguard/commit/fded72f8d01fe9033dba58c184e97889d0e3a7e1))
+* **worker:** VAT numbers of other EU countries, checked in VIES ([#57](https://github.com/Aarklendoia/shopguard/issues/57)) ([e1ff384](https://github.com/Aarklendoia/shopguard/commit/e1ff384d465fad6792b13162022026ff4a0f89af))
+
 ## [0.7.0](https://github.com/Aarklendoia/shopguard/compare/worker-v0.6.0...worker-v0.7.0) (2026-11-17)
 
 
