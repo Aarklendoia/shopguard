@@ -79,6 +79,7 @@ pub fn analyzers(client: reqwest::Client, user_agent: Option<&str>) -> Vec<Box<d
         client.clone(),
         reqwest::Url::parse(crate::history::WAYBACK_URL).expect("static URL"),
         reqwest::Url::parse(crate::history::CRTSH_URL).expect("static URL"),
+        reqwest::Url::parse(crate::history::CERTSPOTTER_URL).expect("static URL"),
     )));
     // one fetcher for every page analyzer: they share its cache and page budget
     let client_for_directory = client.clone();

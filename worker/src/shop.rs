@@ -14,7 +14,11 @@
 //! - **hotlinked catalogue**: the kit is a Next.js site, not a Shopify store, showing the
 //!   product photos of the real store it copies straight from that store's Shopify CDN
 //!   (`cdn.shopify.com/s/files/1/<store>/…`): 26 of 35 fakes, no real shop (a Shopify
-//!   store serves its own photos from `/cdn/shop/` and declares itself).
+//!   store serves its own photos from `/cdn/shop/` and declares itself);
+//! - **German mobile phone only**: German fake shops outside the kit (firewood, tyres,
+//!   containers, heating) give a German mobile number as their only phone, even for a
+//!   "GmbH": 5 of 12 in November 2026, none of 29 real German shops (they show a
+//!   landline or a service number, or no phone at all).
 
 use std::sync::Arc;
 
@@ -66,6 +70,11 @@ const SHOPIFY_STORE: &[&str] = &[
     "cdn.shopify.com/shopifycloud",
 ];
 const SHOPIFY_FILES: &str = "cdn.shopify.com/s/files/1/";
+
+/// A sole trader can answer on a mobile phone: a hint, not a proof.
+const MOBILE_ONLY_WEIGHT: i32 = 15;
+/// Digits of a German number in national form (with its leading 0).
+const PHONE_DIGITS: std::ops::RangeInclusive<usize> = 9..=13;
 
 /// Kit phrases found in `text` (any case).
 pub fn kit_phrases(text: &str) -> Vec<&'static str> {
@@ -229,6 +238,96 @@ pub fn hotlinked_store(html: &str) -> Option<(String, usize)> {
         .filter(|(_, n)| *n >= HOTLINK_MIN_IMAGES)
 }
 
+/// A German phone number read in the text.
+#[derive(Debug, PartialEq)]
+struct Phone {
+    shown: String,
+    /// National form, leading 0 included.
+    national: String,
+    /// Written with +49 or 0049.
+    international: bool,
+}
+
+fn phone_char(c: char) -> bool {
+    c.is_ascii_digit() || "+()/-.".contains(c)
+}
+
+/// German phone numbers of the text: `+49 …`, `0049 …`, or `0…` written in groups
+/// (`02801 3713`, `030/123456`).
+fn german_phones(text: &str) -> Vec<Phone> {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < words.len() {
+        let w = words[i];
+        let international = w.starts_with("+49") || w.starts_with("0049");
+        let national = !international
+            && (w.starts_with('0') || w.starts_with("(0"))
+            && !w.starts_with("00")
+            && !w.starts_with("(00");
+        if !(international || national) || !w.chars().all(phone_char) {
+            i += 1;
+            continue;
+        }
+        let mut parts = vec![w];
+        let mut digits: String = w.chars().filter(char::is_ascii_digit).collect();
+        let mut j = i + 1;
+        while let Some(next) = words.get(j) {
+            let d: String = next.chars().filter(char::is_ascii_digit).collect();
+            if d.is_empty() || !next.chars().all(phone_char) || digits.len() + d.len() > 16 {
+                break;
+            }
+            digits.push_str(&d);
+            parts.push(next);
+            j += 1;
+        }
+        let rest = if international {
+            let r = digits.strip_prefix("0049").or(digits.strip_prefix("49"));
+            r.map(|r| r.strip_prefix('0').unwrap_or(r))
+        } else {
+            Some(digits.as_str())
+        };
+        let shown = parts.join(" ");
+        // "0123456789" in one piece is more likely a reference than a phone number
+        let grouped = parts.len() > 1 || w.contains(['/', '-', '(']);
+        if let Some(rest) = rest {
+            let nat = if international {
+                format!("0{rest}")
+            } else {
+                rest.to_owned()
+            };
+            if PHONE_DIGITS.contains(&nat.len()) && (international || grouped) {
+                out.push(Phone {
+                    shown,
+                    national: nat,
+                    international,
+                });
+            }
+        }
+        i = j;
+    }
+    out
+}
+
+/// The only German phone numbers of the text are mobile numbers: the first one. Mobile
+/// numbers count only written +49 (in national form a mobile prefix can be a reference),
+/// any other German number (landline, 0800, 0180…) cancels the signal.
+pub fn mobile_only(text: &str) -> Option<String> {
+    let phones = german_phones(text);
+    let mobile = |p: &Phone| {
+        ["015", "016", "017"]
+            .iter()
+            .any(|m| p.national.starts_with(m))
+    };
+    if phones.iter().any(|p| !mobile(p)) {
+        return None;
+    }
+    phones
+        .into_iter()
+        .find(|p| p.international && mobile(p))
+        .map(|p| p.shown)
+}
+
 fn signal(name: &str, weight: i32, detail: String) -> Signal {
     Signal {
         source: SOURCE.into(),
@@ -264,6 +363,13 @@ pub fn signals(html: &str, text: &str) -> Vec<Signal> {
     }
     if let Some(d) = uniform_discount(text) {
         out.push(signal("discount_uniform", DISCOUNT_WEIGHT, d));
+    }
+    if let Some(p) = mobile_only(text) {
+        out.push(signal(
+            "phone_mobile_only",
+            MOBILE_ONLY_WEIGHT,
+            format!("the only phone number on the home page, {p}, is a German mobile number"),
+        ));
     }
     out
 }
@@ -449,5 +555,47 @@ mod tests {
             signals(&t[..i], &t[..i]);
             signals(&t[i..], &t[i..]);
         }
+    }
+
+    #[test]
+    fn german_mobile_only() {
+        // reifenivo.de, derboben-holzimport.de
+        let t = "Mobile Montage 0 € bis 30.11.2026 Beratung: +49 163 6574783 Modell suchen";
+        assert_eq!(mobile_only(t).as_deref(), Some("+49 163 6574783"));
+        let t = "Geöffnet von Montag bis Samstag +49 1523 6935280 Kontakt";
+        assert_eq!(mobile_only(t).as_deref(), Some("+49 1523 6935280"));
+        assert_eq!(
+            mobile_only("Tel. 0049 (0)152 93436230").as_deref(),
+            Some("0049 (0)152 93436230")
+        );
+        // a landline or a service number besides it
+        assert!(mobile_only("Hotline +49 (0) 40 22 63 59 0 oder +49 163 6574783").is_none());
+        assert!(mobile_only("+49 163 6574783 · Telefon 02801 3713").is_none());
+        assert!(mobile_only("0800 5435 111 · +49 151 12345678").is_none());
+        // national form only: not counted
+        assert!(mobile_only("Tel. 0163 6574783").is_none());
+        // no phone, prices and references
+        assert!(mobile_only("Art.-Nr. 0157123456 für 0,00 € bis 30.11.2026").is_none());
+        assert!(mobile_only("").is_none());
+    }
+
+    #[test]
+    fn phones_read() {
+        let p = german_phones("Tel.: 030/123456 Fax +49 (0)30 1234-57");
+        assert_eq!(
+            p,
+            [
+                Phone {
+                    shown: "030/123456".into(),
+                    national: "030123456".into(),
+                    international: false
+                },
+                Phone {
+                    shown: "+49 (0)30 1234-57".into(),
+                    national: "030123457".into(),
+                    international: true
+                }
+            ]
+        );
     }
 }
