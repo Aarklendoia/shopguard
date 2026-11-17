@@ -728,7 +728,11 @@ mod tests {
                 ("history_unavailable", 0)
             ]
         );
-        assert!(s[2].detail.contains("api.certspotter.com"), "{}", s[2].detail);
+        assert!(
+            s[2].detail.contains("api.certspotter.com"),
+            "{}",
+            s[2].detail
+        );
         assert!(s[0].detail.contains("rate-limits"), "{}", s[0].detail);
         assert!(s[1].detail.contains("502"), "{}", s[1].detail);
         // paused: the next domain does not even ask
