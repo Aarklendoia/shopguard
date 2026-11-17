@@ -376,6 +376,10 @@ impl Fetcher {
 
 /// Why `html` looks like an online shop, if it does. Cheap text checks on the home
 /// page, done before any deeper page is fetched.
+///
+/// Platforms are recognized by what they put in the pages they serve (asset paths,
+/// scripts, generator), never by their bare name: hosts, agencies and blogs link to
+/// `/magento/` or `/shopware/` without selling anything.
 pub fn shop_evidence(html: &str) -> Vec<&'static str> {
     let h = html.to_ascii_lowercase();
     let mut out = Vec::new();
@@ -386,13 +390,32 @@ pub fn shop_evidence(html: &str) -> Vec<&'static str> {
         ),
         (
             "WooCommerce",
-            &["woocommerce", "wc-ajax", "wp-content/plugins/woocommerce"],
+            &["wc-ajax", "plugins/woocommerce/", "woocommerce-page"],
         ),
-        ("PrestaShop", &["prestashop", "/modules/ps_shoppingcart"]),
-        ("Magento", &["mage/cookies", "magento", "static/version"]),
+        (
+            "PrestaShop",
+            &[
+                // 1.7 / 8: the `prestashop` JS object, its standard modules
+                "var prestashop",
+                "prestashop.on(",
+                "/modules/ps_",
+                "content=\"prestashop",
+                // 1.6: globals written into every page (ocarat.com, custom theme)
+                "var static_token",
+                "var pricedisplayprecision",
+            ],
+        ),
+        ("Magento", &["mage/cookies", "magento_", "static/version"]),
         ("Wix Stores", &["wixstores", "wix-ecommerce"]),
-        ("BigCommerce", &["cdn11.bigcommerce.com", "bigcommerce"]),
-        ("Shopware", &["shopware"]),
+        ("BigCommerce", &["cdn11.bigcommerce.com"]),
+        (
+            "Shopware",
+            &[
+                "bundles/storefront/",
+                "themes/frontend/",
+                "content=\"shopware",
+            ],
+        ),
         ("OpenCart", &["route=checkout/cart", "catalog/view/theme"]),
     ];
     for (name, marks) in platforms {
@@ -707,5 +730,36 @@ mod tests {
             ["WooCommerce", "cart"]
         );
         assert!(shop_evidence("<html><h1>Mairie de Trifouilly</h1></html>").is_empty());
+        assert_eq!(
+            shop_evidence(
+                r#"<script type="text/x-magento-init">{"*":{"Magento_Ui/js/core/app":{}}}</script>"#
+            ),
+            ["Magento"]
+        );
+        assert_eq!(
+            shop_evidence(r#"<script src="/bundles/storefront/storefront/js/storefront.js">"#),
+            ["Shopware"]
+        );
+        assert_eq!(
+            shop_evidence(r#"<script>var prestashop = {"cart":{}};</script>"#),
+            ["PrestaShop"]
+        );
+        // PrestaShop 1.6, custom theme, no cart link on the home page (ocarat.com)
+        assert_eq!(
+            shop_evidence(
+                r#"<script>var baseUri='https://ocarat.com/';var id_lang=2;var isGuest=0;
+                var priceDisplayPrecision=2;var roundMode=2;var static_token='d41d8cd9';</script>"#
+            ),
+            ["PrestaShop"]
+        );
+    }
+
+    /// A host's menu (upsun.com) naming the platforms it runs is not a shop.
+    #[test]
+    fn platform_names_are_not_shops() {
+        let menu = r#"<a href="/magento/" title="Magento">Magento</a>
+            <a href="/shopware/">Shopware</a><a href="/woocommerce/">WooCommerce</a>
+            <a href="/prestashop/">PrestaShop</a><a href="/bigcommerce/">BigCommerce</a>"#;
+        assert!(shop_evidence(menu).is_empty());
     }
 }
