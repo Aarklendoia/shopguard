@@ -11,6 +11,10 @@
 //! - **uniform discount**: the kit copies the catalogue of a real shop and marks every
 //!   product down by about the same ratio (−20 to −30 %): 20 of 35 fakes, no real shop
 //!   (sales have tiers, and leave products at full price);
+//! - **deep discount everywhere**: every product shown at half price or less (−58 to
+//!   −81 %), on WooCommerce or Chinese shop platforms (eclairageoutillage.com,
+//!   bamboogohaus.com): no real shop, even on Black Friday (its −60 % stand next to
+//!   −10 % and −30 %);
 //! - **hotlinked catalogue**: the kit is a Next.js site, not a Shopify store, showing the
 //!   product photos of the real store it copies straight from that store's Shopify CDN
 //!   (`cdn.shopify.com/s/files/1/<store>/…`): 26 of 35 fakes, no real shop (a Shopify
@@ -57,6 +61,10 @@ const DISCOUNT_MIN_SHARE: f64 = 0.8;
 const DISCOUNT_MIN_NEAR: f64 = 0.75;
 const DISCOUNT_SPREAD: f64 = 0.05;
 const DISCOUNT_WEIGHT: i32 = 15;
+/// Every discount at least this deep: half price or less on everything shown. Real
+/// sales, even on Black Friday, leave products at −10 or −30 % next to the −60 %.
+const DEEP_MIN: f64 = 0.5;
+const DEEP_WEIGHT: i32 = 25;
 
 /// Product photos served by another Shopify store, at least this many…
 const HOTLINK_MIN_IMAGES: usize = 5;
@@ -154,13 +162,37 @@ pub fn prices(text: &str) -> Vec<(usize, f64)> {
     out
 }
 
+/// A price shown, from its first to its last mention: the same price said again for
+/// screen readers ("€109,53 Le prix initial était : €109,53", WooCommerce) is one.
+struct Shown {
+    first: usize,
+    last: usize,
+    value: f64,
+}
+
+fn shown(prices: &[(usize, f64)]) -> Vec<Shown> {
+    let mut out: Vec<Shown> = Vec::with_capacity(prices.len());
+    for &(at, value) in prices {
+        match out.last_mut() {
+            Some(s) if s.value == value && at - s.last <= PAIR_GAP => s.last = at,
+            _ => out.push(Shown {
+                first: at,
+                last: at,
+                value,
+            }),
+        }
+    }
+    out
+}
+
 /// Discount of each sale price shown next to its crossed-out price (either order).
-fn discounts(prices: &[(usize, f64)]) -> Vec<f64> {
+fn discounts(prices: &[Shown]) -> Vec<f64> {
     let mut out = Vec::new();
     let mut i = 0;
     while i + 1 < prices.len() {
-        let ((a, p), (b, q)) = (prices[i], prices[i + 1]);
-        if b - a <= PAIR_GAP && p != q {
+        let (x, y) = (&prices[i], &prices[i + 1]);
+        let (p, q) = (x.value, y.value);
+        if y.first - x.last <= PAIR_GAP && p != q {
             out.push(1.0 - p.min(q) / p.max(q));
             i += 2;
         } else {
@@ -170,9 +202,10 @@ fn discounts(prices: &[(usize, f64)]) -> Vec<f64> {
     out
 }
 
-/// Every product marked down by about the same ratio: detail of the signal, if so.
-pub fn uniform_discount(text: &str) -> Option<String> {
-    let all = prices(text);
+/// Discounts of the page when most products shown are discounted (sorted), and how many
+/// prices it shows.
+fn sale_everywhere(text: &str) -> Option<(Vec<f64>, usize)> {
+    let all = shown(&prices(text));
     let mut d = discounts(&all);
     if d.len() < DISCOUNT_MIN_PAIRS
         || (2 * d.len()) as f64 / (all.len() as f64) < DISCOUNT_MIN_SHARE
@@ -180,6 +213,28 @@ pub fn uniform_discount(text: &str) -> Option<String> {
         return None;
     }
     d.sort_by(f64::total_cmp);
+    Some((d, all.len()))
+}
+
+/// Every product shown at half price or less: detail of the signal, if so.
+pub fn deep_discount(text: &str) -> Option<String> {
+    let (d, all) = sale_everywhere(text)?;
+    let pct = |x: f64| (x * 100.0).round() as u32;
+    (d[0] >= DEEP_MIN).then(|| {
+        format!(
+            "{} of {} products shown are discounted, all by {}–{} % (median {} %)",
+            d.len(),
+            all - d.len(),
+            pct(d[0]),
+            pct(d[d.len() - 1]),
+            pct(d[d.len() / 2])
+        )
+    })
+}
+
+/// Every product marked down by about the same ratio: detail of the signal, if so.
+pub fn uniform_discount(text: &str) -> Option<String> {
+    let (d, all) = sale_everywhere(text)?;
     let median = d[d.len() / 2];
     let near: Vec<f64> = d
         .iter()
@@ -193,7 +248,7 @@ pub fn uniform_discount(text: &str) -> Option<String> {
     Some(format!(
         "{} of {} products shown are discounted, {} of them by {}–{} % (median {} %)",
         d.len(),
-        all.len() - d.len(),
+        all - d.len(),
         near.len(),
         pct(near[0]),
         pct(near[near.len() - 1]),
@@ -361,7 +416,10 @@ pub fn signals(html: &str, text: &str) -> Vec<Signal> {
             ),
         ));
     }
-    if let Some(d) = uniform_discount(text) {
+    // a deep discount on everything says more than a uniform one: not both
+    if let Some(d) = deep_discount(text) {
+        out.push(signal("discount_deep", DEEP_WEIGHT, d));
+    } else if let Some(d) = uniform_discount(text) {
         out.push(signal("discount_uniform", DISCOUNT_WEIGHT, d));
     }
     if let Some(p) = mobile_only(text) {
@@ -597,5 +655,59 @@ mod tests {
                 }
             ]
         );
+    }
+
+    /// Products of a WooCommerce page: crossed-out price, sale price, each said again
+    /// for screen readers.
+    fn woocommerce(products: &[(&str, &str, &str)]) -> String {
+        let mut h = String::from("<html lang=\"fr-FR\"><body><ul>");
+        for (name, before, after) in products {
+            h.push_str(&format!(
+                "<li><span class=\"onsale\">- 70 %</span><h2>{name}</h2><del>&euro;&nbsp;{before}\
+                 <span class=\"screen-reader-text\">Le prix initial était : &euro;{before}.</span></del>\
+                 <ins>&euro;&nbsp;{after}<span class=\"screen-reader-text\">Le prix actuel est : \
+                 &euro;{after}.</span></ins><a>Show more</a></li>"
+            ));
+        }
+        h.push_str("</ul></body></html>");
+        crate::html::text(&h)
+    }
+
+    #[test]
+    fn deep_discount_everywhere() {
+        // eclairageoutillage.com: everything at −60 to −80 %
+        let t = woocommerce(&[
+            ("M0000", "109,53", "27,38"),
+            ("LED Strip 5Mt", "7,15", "2,86"),
+            ("Pomme de douche", "344,54", "68,91"),
+            ("DC Distribution", "79,00", "23,70"),
+            ("Pool Gom", "8,65", "3,46"),
+            ("Water Lily", "12,80", "5,12"),
+            ("Cordon RJ45 0,5 m", "2,70", "1,08"),
+            ("Ruban LED RGB", "55,99", "16,80"),
+        ]);
+        assert_eq!(
+            deep_discount(&t).as_deref(),
+            Some("8 of 8 products shown are discounted, all by 60–80 % (median 70 %)")
+        );
+        let s = signals("", &t);
+        assert_eq!(
+            s.iter()
+                .map(|s| (s.name.as_str(), s.weight))
+                .collect::<Vec<_>>(),
+            [("discount_deep", 25)]
+        );
+        // Black Friday on a real shop: up to −60 %, but −20 % and −35 % next to it
+        let t = woocommerce(&[
+            ("Montre A", "200,00", "80,00"),
+            ("Montre B", "150,00", "60,00"),
+            ("Montre C", "100,00", "80,00"),
+            ("Montre D", "90,00", "36,00"),
+            ("Montre E", "120,00", "78,00"),
+            ("Montre F", "300,00", "120,00"),
+            ("Montre G", "80,00", "32,00"),
+            ("Montre H", "60,00", "24,00"),
+        ]);
+        assert!(deep_discount(&t).is_none());
     }
 }
