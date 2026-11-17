@@ -29,7 +29,7 @@ use crate::rdap::{date, epoch_days, registered_day, today};
 
 pub const WAYBACK_URL: &str = "https://web.archive.org/cdx/search/cdx";
 pub const CRTSH_URL: &str = "https://crt.sh/";
-pub const CERTSPOTTER_URL: &str = "https://api.certspotter.com/v1/issuances";
+pub const ISSUANCES_URL: &str = "https://api.certspotter.com/v1/issuances";
 
 const SOURCE: &str = "history";
 /// History does not change much: a week, like RDAP.
@@ -39,9 +39,9 @@ const CACHE_MAX: usize = 20_000;
 const WAYBACK_SPACING: Duration = Duration::from_secs(1);
 const CRTSH_SPACING: Duration = Duration::from_secs(2);
 /// Cert Spotter allows a few requests without an account (`x-ratelimit-limit: 10`).
-const CERTSPOTTER_SPACING: Duration = Duration::from_secs(6);
+const ISSUANCES_SPACING: Duration = Duration::from_secs(6);
 /// First page of the issuances: up to about 100 certificates of 450 bytes.
-const CERTSPOTTER_MAX_BODY: usize = 256 * 1024;
+const ISSUANCES_MAX_BODY: usize = 256 * 1024;
 /// crt.sh answers big domains in 30 s or more, or never.
 const CRTSH_TIMEOUT: Duration = Duration::from_secs(30);
 /// A month per line, 15 bytes: 64 KB is over 300 years.
@@ -137,7 +137,7 @@ struct Issuance {
 
 /// Cert Spotter answer: the certificates not expired yet. Day (since 1970) of the oldest
 /// `not_before` of those still valid `today`, `None` if there are none.
-pub fn parse_certspotter(body: &[u8], today: u64) -> Result<Option<u64>, String> {
+pub fn parse_issuances(body: &[u8], today: u64) -> Result<Option<u64>, String> {
     let list: Vec<Issuance> =
         serde_json::from_slice(body).map_err(|e| format!("api.certspotter.com: {e}"))?;
     Ok(list
@@ -346,7 +346,7 @@ pub struct History {
     client: Client,
     wayback: Url,
     crtsh: Url,
-    certspotter: Url,
+    issuances: Url,
     // one lock per service: a slow crt.sh does not hold the Wayback queries
     wb: Mutex<(Service, Cache<Archive>)>,
     ct: Mutex<(Service, Cache<Certs>)>,
@@ -354,19 +354,19 @@ pub struct History {
 }
 
 impl History {
-    pub fn new(client: Client, wayback: Url, crtsh: Url, certspotter: Url) -> Self {
+    pub fn new(client: Client, wayback: Url, crtsh: Url, issuances: Url) -> Self {
         Self {
             client,
             wayback,
             crtsh,
-            certspotter,
+            issuances,
             wb: Mutex::new((
                 Service::new("web.archive.org", WAYBACK_SPACING),
                 Cache::new(),
             )),
             ct: Mutex::new((Service::new("crt.sh", CRTSH_SPACING), Cache::new())),
             cs: Mutex::new((
-                Service::new("api.certspotter.com", CERTSPOTTER_SPACING),
+                Service::new("api.certspotter.com", ISSUANCES_SPACING),
                 Cache::new(),
             )),
         }
@@ -433,14 +433,14 @@ impl History {
     }
 
     /// Oldest certificate still valid, from Cert Spotter.
-    async fn valid_cert(&self, domain: &str) -> Result<Option<u64>, String> {
+    async fn oldest_valid(&self, domain: &str) -> Result<Option<u64>, String> {
         let mut g = self.cs.lock().await;
         let (svc, cache) = &mut *g;
         if let Some(c) = cache.get(domain) {
             return Ok(c);
         }
         svc.turn().await?;
-        let mut url = self.certspotter.clone();
+        let mut url = self.issuances.clone();
         url.query_pairs_mut()
             .append_pair("domain", domain)
             .append_pair("include_subdomains", "true");
@@ -451,8 +451,8 @@ impl History {
             .await
             .map_err(|e| format!("api.certspotter.com: {e}"))?;
         svc.check(&resp)?;
-        let body = crate::http::read_limited(resp, CERTSPOTTER_MAX_BODY).await?;
-        let c = parse_certspotter(&body, today())?;
+        let body = crate::http::read_limited(resp, ISSUANCES_MAX_BODY).await?;
+        let c = parse_issuances(&body, today())?;
         cache.put(domain, c);
         Ok(c)
     }
@@ -477,7 +477,7 @@ impl Analyzer for History {
                 && registered.is_none()
                 && !out.iter().any(|s| s.name == "first_seen_days")
             {
-                match self.valid_cert(domain).await {
+                match self.oldest_valid(domain).await {
                     Ok(oldest) => out.extend(oldest.and_then(|d| recent_cert(d, today()))),
                     Err(e) => errors.push(Some(e)),
                 }
@@ -527,17 +527,17 @@ mod tests {
     }
 
     #[test]
-    fn certspotter_answers() {
+    fn issuances_answers() {
         let body = br#"[{"id":"1","not_before":"2026-10-27T08:04:01Z","not_after":"2027-01-25T08:04:00Z"},
                         {"id":"2","not_before":"2026-08-01T00:00:00Z","not_after":"2026-10-30T00:00:00Z"},
                         {"id":"3","not_before":"2026-11-02T12:22:19Z","not_after":"2027-01-31T12:40:06Z"}]"#;
         // the second one expired: not counted
         assert_eq!(
-            parse_certspotter(body, t()).unwrap(),
+            parse_issuances(body, t()).unwrap(),
             epoch_days("2026-10-27")
         );
-        assert_eq!(parse_certspotter(b"[]", t()).unwrap(), None);
-        assert!(parse_certspotter(b"{}", t()).is_err());
+        assert_eq!(parse_issuances(b"[]", t()).unwrap(), None);
+        assert!(parse_issuances(b"{}", t()).is_err());
     }
 
     #[test]
@@ -728,11 +728,7 @@ mod tests {
                 ("history_unavailable", 0)
             ]
         );
-        assert!(
-            s[2].detail.contains("api.certspotter.com"),
-            "{}",
-            s[2].detail
-        );
+        assert!(s[2].detail.contains("api.certspotter.com"), "{}", s[2].detail);
         assert!(s[0].detail.contains("rate-limits"), "{}", s[0].detail);
         assert!(s[1].detail.contains("502"), "{}", s[1].detail);
         // paused: the next domain does not even ask
