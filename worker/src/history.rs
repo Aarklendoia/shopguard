@@ -5,7 +5,9 @@
 //!   them; fake shops have none, or a few from a previous owner.
 //! - **Certificate Transparency** through crt.sh: the first certificate ever logged for
 //!   the domain. crt.sh is the only free full history and is often slow or failing:
-//!   best effort, no signal when it does not answer.
+//!   best effort. When it does not answer, **Cert Spotter** gives the certificates still
+//!   valid: not the history, but enough to see a domain whose oldest valid certificate
+//!   is days old.
 //!
 //! The first time the domain was seen (first certificate or first archive) stands in for
 //! its age when RDAP gave none (`.de`, `.io`, `.eu`… have no public RDAP), and shows a
@@ -27,6 +29,7 @@ use crate::rdap::{date, epoch_days, registered_day, today};
 
 pub const WAYBACK_URL: &str = "https://web.archive.org/cdx/search/cdx";
 pub const CRTSH_URL: &str = "https://crt.sh/";
+pub const ISSUANCES_URL: &str = "https://api.certspotter.com/v1/issuances";
 
 const SOURCE: &str = "history";
 /// History does not change much: a week, like RDAP.
@@ -35,6 +38,10 @@ const CACHE_MAX: usize = 20_000;
 /// Between two requests to the same service: both are free services run on donations.
 const WAYBACK_SPACING: Duration = Duration::from_secs(1);
 const CRTSH_SPACING: Duration = Duration::from_secs(2);
+/// Cert Spotter allows a few requests without an account (`x-ratelimit-limit: 10`).
+const ISSUANCES_SPACING: Duration = Duration::from_secs(6);
+/// First page of the issuances: up to about 100 certificates of 450 bytes.
+const ISSUANCES_MAX_BODY: usize = 256 * 1024;
 /// crt.sh answers big domains in 30 s or more, or never.
 const CRTSH_TIMEOUT: Duration = Duration::from_secs(30);
 /// A month per line, 15 bytes: 64 KB is over 300 years.
@@ -59,6 +66,12 @@ const ARCHIVE_NONE_WEIGHT: i32 = 10;
 const ARCHIVE_LONG_MONTHS: usize = 24;
 const ARCHIVE_LONG_YEARS: usize = 3;
 const ARCHIVE_LONG_WEIGHT: i32 = -10;
+/// Oldest certificate still valid issued less than this many days ago: certificates are
+/// renewed before they expire, so a site in use for months keeps an older one valid. Only
+/// a hint (a domain left without a site for a while looks the same), hence half the
+/// weight of a first sighting that recent.
+const RECENT_CERT_DAYS: u64 = 30;
+const RECENT_CERT_WEIGHT: i32 = 15;
 
 /// Months (`YYYYMM`) in which the home page was archived answering 200.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -113,6 +126,39 @@ pub fn parse_crtsh(body: &[u8]) -> Result<Certs, String> {
             count: entries.len(),
         },
         None => Certs::None,
+    })
+}
+
+#[derive(Deserialize)]
+struct Issuance {
+    not_before: String,
+    not_after: String,
+}
+
+/// Cert Spotter answer: the certificates not expired yet. Day (since 1970) of the oldest
+/// `not_before` of those still valid `today`, `None` if there are none.
+pub fn parse_issuances(body: &[u8], today: u64) -> Result<Option<u64>, String> {
+    let list: Vec<Issuance> =
+        serde_json::from_slice(body).map_err(|e| format!("api.certspotter.com: {e}"))?;
+    Ok(list
+        .iter()
+        .filter(|i| epoch_days(&i.not_after).is_some_and(|end| end >= today))
+        .filter_map(|i| epoch_days(&i.not_before))
+        .min())
+}
+
+/// Signal from the oldest certificate still valid, when nothing older is known.
+pub fn recent_cert(oldest: u64, today: u64) -> Option<Signal> {
+    let age = today.saturating_sub(oldest);
+    (age < RECENT_CERT_DAYS).then(|| {
+        signal(
+            "cert_recent",
+            RECENT_CERT_WEIGHT,
+            format!(
+                "oldest valid certificate issued {age} days ago ({}, Cert Spotter; no history from crt.sh)",
+                date(oldest)
+            ),
+        )
     })
 }
 
@@ -300,22 +346,29 @@ pub struct History {
     client: Client,
     wayback: Url,
     crtsh: Url,
+    issuances: Url,
     // one lock per service: a slow crt.sh does not hold the Wayback queries
     wb: Mutex<(Service, Cache<Archive>)>,
     ct: Mutex<(Service, Cache<Certs>)>,
+    cs: Mutex<(Service, Cache<Option<u64>>)>,
 }
 
 impl History {
-    pub fn new(client: Client, wayback: Url, crtsh: Url) -> Self {
+    pub fn new(client: Client, wayback: Url, crtsh: Url, issuances: Url) -> Self {
         Self {
             client,
             wayback,
             crtsh,
+            issuances,
             wb: Mutex::new((
                 Service::new("web.archive.org", WAYBACK_SPACING),
                 Cache::new(),
             )),
             ct: Mutex::new((Service::new("crt.sh", CRTSH_SPACING), Cache::new())),
+            cs: Mutex::new((
+                Service::new("api.certspotter.com", ISSUANCES_SPACING),
+                Cache::new(),
+            )),
         }
     }
 
@@ -378,6 +431,31 @@ impl History {
         cache.put(domain, c.clone());
         Ok(c)
     }
+
+    /// Oldest certificate still valid, from Cert Spotter.
+    async fn oldest_valid(&self, domain: &str) -> Result<Option<u64>, String> {
+        let mut g = self.cs.lock().await;
+        let (svc, cache) = &mut *g;
+        if let Some(c) = cache.get(domain) {
+            return Ok(c);
+        }
+        svc.turn().await?;
+        let mut url = self.issuances.clone();
+        url.query_pairs_mut()
+            .append_pair("domain", domain)
+            .append_pair("include_subdomains", "true");
+        let resp = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|e| format!("api.certspotter.com: {e}"))?;
+        svc.check(&resp)?;
+        let body = crate::http::read_limited(resp, ISSUANCES_MAX_BODY).await?;
+        let c = parse_issuances(&body, today())?;
+        cache.put(domain, c);
+        Ok(c)
+    }
 }
 
 impl Analyzer for History {
@@ -388,13 +466,23 @@ impl Analyzer for History {
     fn analyze<'a>(&'a self, domain: &'a str, earlier: &'a [Signal]) -> BoxFuture<'a, Vec<Signal>> {
         Box::pin(async move {
             let (archive, certs) = tokio::join!(self.archive(domain), self.certs(domain));
-            let mut out = signals(
-                archive.as_ref().ok(),
-                certs.as_ref().ok(),
-                registered_day(earlier),
-                today(),
-            );
-            for e in [archive.err(), certs.err()].into_iter().flatten() {
+            let registered = registered_day(earlier);
+            let certs_ok = certs.as_ref().ok();
+            let mut out = signals(archive.as_ref().ok(), certs_ok, registered, today());
+            // crt.sh failed or knows no certificate yet (it indexes new ones late), and
+            // nothing else dates the domain: the valid certificates
+            let no_history = !matches!(certs_ok, Some(Certs::First { .. } | Certs::Many));
+            let mut errors = vec![archive.err(), certs.err()];
+            if no_history
+                && registered.is_none()
+                && !out.iter().any(|s| s.name == "first_seen_days")
+            {
+                match self.oldest_valid(domain).await {
+                    Ok(oldest) => out.extend(oldest.and_then(|d| recent_cert(d, today()))),
+                    Err(e) => errors.push(Some(e)),
+                }
+            }
+            for e in errors.into_iter().flatten() {
                 debug!(%domain, "history: {e}");
                 out.push(signal("history_unavailable", 0, e));
             }
@@ -436,6 +524,32 @@ mod tests {
         );
         assert_eq!(parse_crtsh(b"[]").unwrap(), Certs::None);
         assert!(parse_crtsh(b"<html>502 Bad Gateway").is_err());
+    }
+
+    #[test]
+    fn issuances_answers() {
+        let body = br#"[{"id":"1","not_before":"2026-10-27T08:04:01Z","not_after":"2027-01-25T08:04:00Z"},
+                        {"id":"2","not_before":"2026-08-01T00:00:00Z","not_after":"2026-10-30T00:00:00Z"},
+                        {"id":"3","not_before":"2026-11-02T12:22:19Z","not_after":"2027-01-31T12:40:06Z"}]"#;
+        // the second one expired: not counted
+        assert_eq!(
+            parse_issuances(body, t()).unwrap(),
+            epoch_days("2026-10-27")
+        );
+        assert_eq!(parse_issuances(b"[]", t()).unwrap(), None);
+        assert!(parse_issuances(b"{}", t()).is_err());
+    }
+
+    #[test]
+    fn recent_valid_certificate() {
+        let s = recent_cert(t() - 21, t()).unwrap();
+        assert_eq!((s.name.as_str(), s.weight), ("cert_recent", 15));
+        assert_eq!(
+            s.detail,
+            "oldest valid certificate issued 21 days ago (2026-10-27, Cert Spotter; no history from crt.sh)"
+        );
+        // a site in use keeps a certificate older than a month valid
+        assert!(recent_cert(t() - 60, t()).is_none());
     }
 
     fn months(ms: &[u32]) -> Archive {
@@ -566,6 +680,7 @@ mod tests {
             crate::http::test_client(),
             Url::parse(&format!("{base}cdx")).unwrap(),
             Url::parse(&format!("{base}crt")).unwrap(),
+            Url::parse(&format!("{base}cs")).unwrap(),
         );
         let s = hist.analyze("shop.fr", &[]).await;
         assert_eq!(s[0].name, "first_seen_days");
@@ -592,22 +707,94 @@ mod tests {
                     )
                 }),
             )
-            .route("/crt", get(|| async { (StatusCode::BAD_GATEWAY, "502") }));
+            .route("/crt", get(|| async { (StatusCode::BAD_GATEWAY, "502") }))
+            .route(
+                "/cs",
+                get(|| async { (StatusCode::TOO_MANY_REQUESTS, "quota") }),
+            );
         let base = serve(app).await;
         let hist = History::new(
             crate::http::test_client(),
             Url::parse(&format!("{base}cdx")).unwrap(),
             Url::parse(&format!("{base}crt")).unwrap(),
+            Url::parse(&format!("{base}cs")).unwrap(),
         );
         let s = hist.analyze("shop.fr", &[]).await;
         assert_eq!(
             weights(&s),
-            [("history_unavailable", 0), ("history_unavailable", 0)]
+            [
+                ("history_unavailable", 0),
+                ("history_unavailable", 0),
+                ("history_unavailable", 0)
+            ]
+        );
+        assert!(
+            s[2].detail.contains("api.certspotter.com"),
+            "{}",
+            s[2].detail
         );
         assert!(s[0].detail.contains("rate-limits"), "{}", s[0].detail);
         assert!(s[1].detail.contains("502"), "{}", s[1].detail);
         // paused: the next domain does not even ask
         let s = hist.analyze("other.fr", &[]).await;
         assert!(s[0].detail.contains("rate-limits"), "{}", s[0].detail);
+    }
+
+    #[tokio::test]
+    async fn valid_certificates_when_crtsh_fails() {
+        let issued = date(today() - 10);
+        let cs = format!(
+            r#"[{{"id":"1","not_before":"{issued}T08:00:00Z","not_after":"2999-01-01T00:00:00Z"}}]"#
+        );
+        let app = Router::new()
+            .route("/cdx", get(|| async { "" }))
+            .route("/crt", get(|| async { (StatusCode::BAD_GATEWAY, "502") }))
+            .route(
+                "/cs",
+                get(move |Query(q): Query<HashMap<String, String>>| {
+                    let cs = cs.clone();
+                    async move {
+                        assert_eq!(q["domain"], "shop.de");
+                        cs
+                    }
+                }),
+            );
+        let base = serve(app).await;
+        let hist = History::new(
+            crate::http::test_client(),
+            Url::parse(&format!("{base}cdx")).unwrap(),
+            Url::parse(&format!("{base}crt")).unwrap(),
+            Url::parse(&format!("{base}cs")).unwrap(),
+        );
+        let s = hist.analyze("shop.de", &[]).await;
+        assert_eq!(
+            weights(&s),
+            [
+                ("archive_none", 10),
+                ("cert_recent", 15),
+                ("history_unavailable", 0)
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn valid_certificates_when_crtsh_knows_none() {
+        let issued = date(today() - 3);
+        let cs = format!(
+            r#"[{{"id":"1","not_before":"{issued}T08:00:00Z","not_after":"2999-01-01T00:00:00Z"}}]"#
+        );
+        let app = Router::new()
+            .route("/cdx", get(|| async { "" }))
+            .route("/crt", get(|| async { "[]" }))
+            .route("/cs", get(move || async move { cs }));
+        let base = serve(app).await;
+        let hist = History::new(
+            crate::http::test_client(),
+            Url::parse(&format!("{base}cdx")).unwrap(),
+            Url::parse(&format!("{base}crt")).unwrap(),
+            Url::parse(&format!("{base}cs")).unwrap(),
+        );
+        let s = hist.analyze("shop.de", &[]).await;
+        assert_eq!(weights(&s), [("archive_none", 10), ("cert_recent", 15)]);
     }
 }

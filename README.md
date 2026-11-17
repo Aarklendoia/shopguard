@@ -22,7 +22,7 @@ it can check right away.
 
 - **Privacy**: the plugin sends **domain names only**, never client addresses or timestamps.
   The worker queries public services about those domains (RDAP registries, Certificate
-  Transparency logs through crt.sh, the Internet Archive's Wayback Machine, the French
+  Transparency logs through crt.sh and Cert Spotter, the Internet Archive's Wayback Machine, the French
   company directory) and fetches the sites themselves, from the Docker host. The hosting network is looked up by IP address only (Team Cymru DNS),
   and the DROP lists of criminal networks and the current Firefox version (for the
   User-Agent of page downloads) are downloaded once a day.
