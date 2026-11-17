@@ -95,6 +95,19 @@ cosign verify ghcr.io/aarklendoia/shopguard-worker:<version> \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 ```
 
+### Check a domain by hand
+
+`check` analyzes domains (or the domains of URLs) once and prints their verdicts, without
+the service, the store or a token. Without arguments it reads one domain per line from
+standard input; `--json` prints one verdict per line, as the API returns them.
+
+```sh
+docker run --rm ghcr.io/aarklendoia/shopguard-worker check https://www.example-shop.fr/
+docker run --rm -i ghcr.io/aarklendoia/shopguard-worker check --json < domains.txt | jq .score
+# from the source tree
+cargo run --release -- check example-shop.fr
+```
+
 ### API
 
 | Method | Path                    | Purpose                                         |

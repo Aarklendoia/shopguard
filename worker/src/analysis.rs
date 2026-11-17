@@ -112,6 +112,15 @@ async fn isolated(analyzers: Arc<Vec<Box<dyn Analyzer>>>, i: usize, domain: Stri
     }
 }
 
+/// Verdict on `domain` (a registrable domain): every analyzer in turn.
+pub async fn verdict(analyzers: &Arc<Vec<Box<dyn Analyzer>>>, domain: String) -> Verdict {
+    let mut signals = Vec::new();
+    for i in 0..analyzers.len() {
+        signals.extend(isolated(analyzers.clone(), i, domain.clone()).await);
+    }
+    Verdict::new(domain, signals)
+}
+
 pub async fn run(
     mut rx: mpsc::Receiver<String>,
     store: Arc<Store>,
@@ -120,11 +129,7 @@ pub async fn run(
     info!(analyzers = analyzers.len(), "analysis pipeline started");
     let analyzers = Arc::new(analyzers);
     while let Some(domain) = rx.recv().await {
-        let mut signals = Vec::new();
-        for i in 0..analyzers.len() {
-            signals.extend(isolated(analyzers.clone(), i, domain.clone()).await);
-        }
-        let verdict = Verdict::new(domain, signals);
+        let verdict = verdict(&analyzers, domain).await;
         if verdict.score >= 50 {
             warn!(domain = %verdict.domain, score = verdict.score, "suspicious domain");
         }
