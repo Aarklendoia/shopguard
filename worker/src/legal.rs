@@ -241,9 +241,10 @@ pub fn platform_pages(evidence: &[&str]) -> &'static [&'static str] {
 
 /// Pages of the same site that may hold the legal notice, best first: the links of the
 /// home page, with the `platform` pages after the links that name a legal notice or terms
-/// of sale.
-pub fn legal_links(html: &str, base: &Url, domain: &str, platform: &[&str]) -> Vec<Url> {
-    let site = domain::registrable(domain);
+/// of sale. The site is the one of `base`, the home page actually shown: a domain that
+/// redirects elsewhere (`bouygtel.fr` → `bouyguestelecom.fr`) is judged on where it leads.
+pub fn legal_links(html: &str, base: &Url, platform: &[&str]) -> Vec<Url> {
+    let site = base.host_str().and_then(domain::registrable);
     let mut ranked: Vec<(u8, Url)> = html::links(html, base, usize::MAX)
         .into_iter()
         .filter_map(|l| Some((legal_rank(&l)?, l.url)))
@@ -371,7 +372,7 @@ impl Analyzer for Legal {
                 .collect();
             let mut legal_page = None;
             if !ids.iter().any(|(id, _)| matches!(id, Id::Valid(_))) {
-                for url in legal_links(&home.html, &home.url, domain, platform_pages(&evidence)) {
+                for url in legal_links(&home.html, &home.url, platform_pages(&evidence)) {
                     let Ok(p) = self.fetcher.get(&url).await else {
                         continue;
                     };
@@ -500,7 +501,7 @@ mod tests {
             let t = html::text(cut);
             identifiers(&t);
             identifiers(cut);
-            legal_links(cut, &base, "shop.fr", &["/policies/legal-notice"]);
+            legal_links(cut, &base, &["/policies/legal-notice"]);
             html::lang(cut);
             html::decode(cut);
         }
@@ -524,7 +525,7 @@ mod tests {
             <a href="http://shop.fr/pages/mentions-legales#top">Mentions légales</a>
             <a href="https://mentions.legales.example.com/">Mentions légales</a>
             <a href="/collections/all">Tout</a><a href="/pages/mentions-legales">ML</a>"#;
-        let got: Vec<String> = legal_links(h, &base, "shop.fr", &[])
+        let got: Vec<String> = legal_links(h, &base, &[])
             .iter()
             .map(Url::to_string)
             .collect();
@@ -543,7 +544,7 @@ mod tests {
              <a href=\"/cgv.html#art9\">Conditions générales de vente</a><a href=\"/cgv.html\">CGV</a>",
             "<a href=\"/rayon\">Rayon</a>".repeat(1800)
         );
-        let got: Vec<String> = legal_links(&h, &base, "shop.fr", &[])
+        let got: Vec<String> = legal_links(&h, &base, &[])
             .iter()
             .map(Url::to_string)
             .collect();
@@ -561,7 +562,7 @@ mod tests {
         let base = Url::parse("https://shop.fr/").unwrap();
         let shopify = platform_pages(&["Shopify", "cart"]);
         // no link at all (footer in JavaScript)
-        let got: Vec<String> = legal_links("<html>", &base, "shop.fr", shopify)
+        let got: Vec<String> = legal_links("<html>", &base, shopify)
             .iter()
             .map(Url::to_string)
             .collect();
@@ -574,7 +575,7 @@ mod tests {
         );
         // a link naming the legal notice comes first, the same page only once
         let h = r#"<a href="/pages/ml">Mentions légales</a><a href="/policies/legal-notice">x</a>"#;
-        let got: Vec<String> = legal_links(h, &base, "shop.fr", shopify)
+        let got: Vec<String> = legal_links(h, &base, shopify)
             .iter()
             .map(Url::to_string)
             .collect();
@@ -587,6 +588,25 @@ mod tests {
             ]
         );
         assert!(platform_pages(&["WooCommerce"]).is_empty());
+    }
+
+    /// A domain redirecting to another one: the legal notice is looked for on the site
+    /// the visitor lands on, any of its hosts, and nowhere else.
+    #[test]
+    fn site_of_the_page_shown() {
+        // bouygtel.fr → https://www.bouyguestelecom.fr/
+        let base = Url::parse("https://www.bouyguestelecom.fr/").unwrap();
+        let h = r#"<a href="https://www.corporate.bouyguestelecom.fr/mentions-legales">Mentions légales</a>
+            <a href="https://www.bouygtel.fr/mentions-legales">Mentions légales</a>
+            <a href="https://www.bouygues.com/mentions-legales">Mentions légales</a>"#;
+        let got: Vec<String> = legal_links(h, &base, &[])
+            .iter()
+            .map(Url::to_string)
+            .collect();
+        assert_eq!(
+            got,
+            ["https://www.corporate.bouyguestelecom.fr/mentions-legales"]
+        );
     }
 
     #[test]
