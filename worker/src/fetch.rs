@@ -394,7 +394,16 @@ pub fn shop_evidence(html: &str) -> Vec<&'static str> {
         ),
         (
             "PrestaShop",
-            &["var prestashop", "/modules/ps_", "content=\"prestashop"],
+            &[
+                // 1.7 / 8: the `prestashop` JS object, its standard modules
+                "var prestashop",
+                "prestashop.on(",
+                "/modules/ps_",
+                "content=\"prestashop",
+                // 1.6: globals written into every page (ocarat.com, custom theme)
+                "var static_token",
+                "var pricedisplayprecision",
+            ],
         ),
         ("Magento", &["mage/cookies", "magento_", "static/version"]),
         ("Wix Stores", &["wixstores", "wix-ecommerce"]),
@@ -733,6 +742,14 @@ mod tests {
         );
         assert_eq!(
             shop_evidence(r#"<script>var prestashop = {"cart":{}};</script>"#),
+            ["PrestaShop"]
+        );
+        // PrestaShop 1.6, custom theme, no cart link on the home page (ocarat.com)
+        assert_eq!(
+            shop_evidence(
+                r#"<script>var baseUri='https://ocarat.com/';var id_lang=2;var isGuest=0;
+                var priceDisplayPrecision=2;var roundMode=2;var static_token='d41d8cd9';</script>"#
+            ),
             ["PrestaShop"]
         );
     }
