@@ -2,7 +2,8 @@
 //!
 //! `shopguard-worker` runs the service; `shopguard-worker healthcheck` queries its
 //! `/healthz` and exits 0 or 1 (the image has no shell or curl for a health check);
-//! `shopguard-worker check DOMAIN...` analyzes domains once and prints their verdicts.
+//! `shopguard-worker check DOMAIN...` analyzes domains once and prints their verdicts;
+//! `shopguard-worker measure` compares verdicts with the measurement corpus.
 
 mod analysis;
 mod api;
@@ -16,6 +17,7 @@ mod hosting;
 mod html;
 mod http;
 mod legal;
+mod measure;
 mod netguard;
 mod page;
 mod rdap;
@@ -37,6 +39,9 @@ use tracing_subscriber::EnvFilter;
 #[tokio::main]
 async fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("measure") {
+        return measure::measure(&args[1..]);
+    }
     if args.first().map(String::as_str) == Some("check") {
         // stdout is for the verdicts
         tracing_subscriber::fmt()

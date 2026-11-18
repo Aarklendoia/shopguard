@@ -13,7 +13,7 @@ usage: shopguard-worker check [--json] [DOMAIN|URL]...
 
 Analyzes each domain (or the domain of each URL) once and prints its verdict.
 Without arguments, reads one domain or URL per line from standard input
-(empty lines and lines starting with # are skipped).
+(empty lines skipped; # starts a comment, as in worker/corpus/*.txt).
 
   --json   one verdict per line, as returned by GET /v1/verdicts/{domain}
 
@@ -42,8 +42,9 @@ pub async fn check(args: &[String]) -> ExitCode {
             .lock()
             .lines()
             .map_while(Result::ok)
-            .map(|l| l.trim().to_owned())
-            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            // `domain  # comment`, as in the measurement corpus
+            .map(|l| l.split('#').next().unwrap_or("").trim().to_owned())
+            .filter(|l| !l.is_empty())
             .collect();
     }
 

@@ -1,0 +1,51 @@
+# Real shops: the scoring must keep them under the threshold, ideally at 0.
+# Big and small, French and German, many on Shopify (the platform of most fakes).
+# Format: domain  # country, platform or note
+
+# France
+1083.fr  # FR, Magento
+allbirds.com  # US, Shopify, sells to France
+armorlux.com  # FR, Black Friday discounts
+asphalte.com  # FR, Shopify
+bonnegueule.fr  # FR, Shopify
+boulanger.com  # FR, big retailer
+cabaia.fr  # FR
+cdiscount.com  # FR, bot protection
+cultura.com  # FR, big retailer
+decathlon.fr  # FR, bot protection
+fnac.com  # FR, bot protection
+hopaal.com  # FR, Shopify
+jimmyfairly.com  # FR, Shopify
+laboutiqueofficielle.com  # FR
+ldlc.com  # FR
+lemahieu.com  # FR, Shopify
+lepetitballon.com  # FR, Shopify, legal notice only at /policies
+leroymerlin.fr  # FR, big retailer
+leslipfrancais.fr  # FR, Shopify
+maisonsdumonde.com  # FR
+natureetdecouvertes.com  # FR
+nestorbio.fr  # FR, gaps in its history
+ocarat.com  # FR
+rueducommerce.fr  # FR
+sezane.com  # FR
+tomarcreation.com  # SK/FR, small shop, legitimately mixed languages
+
+# Germany
+alternate.de  # DE
+ankerkraut.de  # DE, Shopify
+armedangels.com  # DE, Shopify
+avocadostore.de  # DE
+bergfreunde.de  # DE
+conrad.de  # DE
+cyberport.de  # DE
+globetrotter.de  # DE
+hessnatur.com  # DE
+korodrogerie.de  # DE
+manufactum.de  # DE
+meinherzschlag.de  # DE, small shop copied by a fake (meinherzschlag.shop)
+notebooksbilliger.de  # DE
+otto.de  # DE, big retailer
+snocks.com  # DE, Shopify
+tchibo.de  # DE
+thalia.de  # DE
+zalando.de  # DE, big retailer
