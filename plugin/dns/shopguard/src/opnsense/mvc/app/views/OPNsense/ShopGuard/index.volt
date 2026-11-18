@@ -187,6 +187,21 @@
 
         loadLabels();
 
+        function buttons(row) {
+            var id = ' data-row-id="' + esc(row.domain) + '"';
+            var out = '<button type="button" class="btn btn-xs btn-default verdict-details"' + id +
+                ' title="{{ lang._('Signals') }}"><span class="fa fa-fw fa-info-circle"></span></button> ';
+            if (row.feedback) {
+                return out + '<button type="button" class="btn btn-xs btn-default verdict-decide"' + id +
+                    ' data-label="none" title="{{ lang._('Forget the decision') }}"><span class="fa fa-fw fa-undo"></span></button>';
+            }
+            return out +
+                '<button type="button" class="btn btn-xs btn-default verdict-decide"' + id +
+                ' data-label="legit" title="{{ lang._('Legitimate: never block') }}"><span class="fa fa-fw fa-thumbs-up"></span></button> ' +
+                '<button type="button" class="btn btn-xs btn-default verdict-decide"' + id +
+                ' data-label="fake" title="{{ lang._('Fake shop: always block') }}"><span class="fa fa-fw fa-thumbs-down"></span></button>';
+        }
+
         function scoreClass(score) {
             if (score >= {{ threshold }}) return 'danger';
             if (score >= 50) return 'warning';
@@ -209,8 +224,11 @@
                     return response;
                 },
                 formatters: {
+                    // the buttons live in the domain column, the widest one: a column of their
+                    // own came out too narrow whatever width it declared
                     domain: function (column, row) {
-                        return esc(row.domain) + decisionBadge(row.feedback);
+                        return '<span class="pull-right" style="white-space: nowrap; margin-left: 1em;">' +
+                            buttons(row) + '</span>' + esc(row.domain) + decisionBadge(row.feedback);
                     },
                     score: function (column, row) {
                         return '<span class="label label-' + scoreClass(row.score) + '">' + esc(row.score) + '</span>';
@@ -222,20 +240,6 @@
                         return (row.signals || []).filter(function (s) { return s.weight !== 0; }).map(function (s) {
                             return esc(s.name) + ' ' + (s.weight > 0 ? '+' : '') + esc(s.weight);
                         }).join(', ');
-                    },
-                    details: function (column, row) {
-                        var id = ' data-row-id="' + esc(row.domain) + '"';
-                        var out = '<button type="button" class="btn btn-xs btn-default verdict-details"' + id +
-                            ' title="{{ lang._('Signals') }}"><span class="fa fa-fw fa-info-circle"></span></button> ';
-                        if (row.feedback) {
-                            return out + '<button type="button" class="btn btn-xs btn-default verdict-decide"' + id +
-                                ' data-label="none" title="{{ lang._('Forget the decision') }}"><span class="fa fa-fw fa-undo"></span></button>';
-                        }
-                        return out +
-                            '<button type="button" class="btn btn-xs btn-default verdict-decide"' + id +
-                            ' data-label="legit" title="{{ lang._('Legitimate: never block') }}"><span class="fa fa-fw fa-thumbs-up"></span></button> ' +
-                            '<button type="button" class="btn btn-xs btn-default verdict-decide"' + id +
-                            ' data-label="fake" title="{{ lang._('Fake shop: always block') }}"><span class="fa fa-fw fa-thumbs-down"></span></button>';
                     }
                 }
             }
@@ -321,7 +325,6 @@
                 <th data-column-id="score" data-type="numeric" data-min-width="70" data-max-width="90" data-formatter="score">{{ lang._('Score') }}</th>
                 <th data-column-id="signals" data-formatter="signals">{{ lang._('Signals') }}</th>
                 <th data-column-id="checked_at" data-min-width="165" data-max-width="200" data-formatter="checked">{{ lang._('Last check') }}</th>
-                <th data-column-id="details" data-min-width="125" data-max-width="150" data-formatter="details" data-sortable="false"></th>
             </tr>
         </thead>
         <tbody></tbody>
