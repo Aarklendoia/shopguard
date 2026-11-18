@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.2](https://github.com/Aarklendoia/shopguard/compare/plugin-v0.4.1...plugin-v0.4.2) (2026-11-18)
+
+
+### Bug Fixes
+
+* **plugin:** verdict buttons no longer cut off ([#70](https://github.com/Aarklendoia/shopguard/issues/70)) ([46cd923](https://github.com/Aarklendoia/shopguard/commit/46cd9234a73e6e01b55e7eb31b16c1d431c01eb2))
+
 ## [0.4.1](https://github.com/Aarklendoia/shopguard/compare/plugin-v0.4.0...plugin-v0.4.1) (2026-11-18)
 
 
