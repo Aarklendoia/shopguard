@@ -1,0 +1,272 @@
+# Machine translation, not reviewed by a native speaker: corrections are welcome.
+msgid ""
+msgstr ""
+"Project-Id-Version: os-shopguard\n"
+"PO-Revision-Date: 2026-11-18 15:00+0100\n"
+"Last-Translator: machine translation\n"
+"Language-Team: Portuguese (Portugal)\n"
+"Language: pt_PT\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "the cron job could not be updated."
+msgstr "não foi possível atualizar a tarefa cron."
+
+msgid "Enter a domain name."
+msgstr "Introduza um nome de domínio."
+
+msgid "Enable"
+msgstr "Ativar"
+
+msgid "Send the domains resolved by Unbound to the worker. Only domain names are sent, never client addresses."
+msgstr "Enviar ao worker os domínios resolvidos pelo Unbound. Apenas são enviados nomes de domínio, nunca endereços de clientes."
+
+msgid "Worker URL"
+msgstr "URL do worker"
+
+msgid "http://htpc.lan:8080"
+msgstr "http://htpc.lan:8080"
+
+msgid "Base URL of the shopguard-worker container."
+msgstr "URL base do contentor shopguard-worker."
+
+msgid "Token"
+msgstr "Token"
+
+msgid "SHOPGUARD_TOKEN of the worker."
+msgstr "SHOPGUARD_TOKEN do worker."
+
+msgid "Mode"
+msgstr "Modo"
+
+msgid "Observe only: suspicious domains are listed here. Block: the domains scoring at least the threshold, with their subdomains, are also blocked by Unbound (answered NXDOMAIN, updated every 5 minutes). They appear in Reporting -> Unbound DNS as blocked by ShopGuard."
+msgstr "Apenas observar: os domínios suspeitos são listados aqui. Bloquear: os domínios cuja pontuação atinge o limiar, com os seus subdomínios, são também bloqueados pelo Unbound (resposta NXDOMAIN, atualizado a cada 5 minutos). Aparecem em Relatórios -> Unbound DNS como bloqueados pelo ShopGuard."
+
+msgid "Score threshold"
+msgstr "Limiar de pontuação"
+
+msgid "Domains scoring at least this value (1 to 100) are considered fake shops."
+msgstr "Os domínios cuja pontuação atinge este valor (1 a 100) são considerados lojas falsas."
+
+msgid "Use the worker base URL, e.g. http://htpc.lan:8080 or http://[2001:db8::10]:8080."
+msgstr "Use o URL base do worker, p. ex. http://htpc.lan:8080 ou http://[2001:db8::10]:8080."
+
+msgid "The token is the SHOPGUARD_TOKEN of the worker: at least 32 characters."
+msgstr "O token é o SHOPGUARD_TOKEN do worker: pelo menos 32 caracteres."
+
+msgid "Observe only"
+msgstr "Apenas observar"
+
+msgid "Block in Unbound"
+msgstr "Bloquear no Unbound"
+
+msgid "Choose a score from 1 to 100."
+msgstr "Escolha uma pontuação de 1 a 100."
+
+msgid "Reachable (version %s)"
+msgstr "Acessível (versão %s)"
+
+msgid "Unreachable"
+msgstr "Inacessível"
+
+msgid "%s domains blocked in Unbound (being applied…)"
+msgstr "%s domínios bloqueados no Unbound (a aplicar…)"
+
+msgid "%s domains blocked in Unbound"
+msgstr "%s domínios bloqueados no Unbound"
+
+msgid "Observe only: nothing blocked"
+msgstr "Apenas observar: nada bloqueado"
+
+msgid "Disabled"
+msgstr "Desativado"
+
+msgid "Not run yet"
+msgstr "Ainda não executada"
+
+msgid "%s: %s new domains sent"
+msgstr "%s: %s novos domínios enviados"
+
+msgid "Settings saved, but:"
+msgstr "Definições guardadas, mas:"
+
+msgid "the blocklist could not be updated."
+msgstr "não foi possível atualizar a lista de bloqueio."
+
+msgid "Settings applied: %s domains blocked in Unbound."
+msgstr "Definições aplicadas: %s domínios bloqueados no Unbound."
+
+msgid "Unbound applies the changes within 1 to 2 minutes."
+msgstr "O Unbound aplica as alterações dentro de 1 a 2 minutos."
+
+msgid "Settings applied: observe only, nothing is blocked."
+msgstr "Definições aplicadas: apenas observar, nada é bloqueado."
+
+msgid "Settings applied: ShopGuard is disabled."
+msgstr "Definições aplicadas: o ShopGuard está desativado."
+
+msgid "ShopGuard"
+msgstr "ShopGuard"
+
+msgid "The decision was not saved."
+msgstr "A decisão não foi guardada."
+
+msgid "Saved. Unbound applies it within 1 to 2 minutes."
+msgstr "Guardado. O Unbound aplica-a dentro de 1 a 2 minutos."
+
+msgid "Saved."
+msgstr "Guardado."
+
+msgid "marked fake"
+msgstr "marcado como falso"
+
+msgid "marked legitimate"
+msgstr "marcado como legítimo"
+
+msgid "not analyzed yet"
+msgstr "ainda não analisado"
+
+msgid "Forget the decision"
+msgstr "Esquecer a decisão"
+
+msgid "No decision yet."
+msgstr "Ainda sem decisões."
+
+msgid "Signals"
+msgstr "Sinais"
+
+msgid "Legitimate: never block"
+msgstr "Legítimo: nunca bloquear"
+
+msgid "Fake shop: always block"
+msgstr "Loja falsa: bloquear sempre"
+
+msgid "Weight"
+msgstr "Peso"
+
+msgid "Signal"
+msgstr "Sinal"
+
+msgid "Detail"
+msgstr "Detalhe"
+
+msgid "%s — score %s"
+msgstr "%s — pontuação %s"
+
+msgid "Close"
+msgstr "Fechar"
+
+msgid "Verdicts"
+msgstr "Veredictos"
+
+msgid "Decisions"
+msgstr "Decisões"
+
+msgid "Settings"
+msgstr "Definições"
+
+msgid "Minimum score"
+msgstr "Pontuação mínima"
+
+msgid "0 (all)"
+msgstr "0 (todos)"
+
+msgid "blocking threshold"
+msgstr "limiar de bloqueio"
+
+msgid "Saving…"
+msgstr "A guardar…"
+
+msgid "Domain"
+msgstr "Domínio"
+
+msgid "Score"
+msgstr "Pontuação"
+
+msgid "Last check"
+msgstr "Última verificação"
+
+msgid "Actions"
+msgstr "Ações"
+
+msgid "Your decisions override the score: a domain marked fake is always blocked (in Block mode), one marked legitimate never is. They are kept by the worker, which also uses them to improve its scoring."
+msgstr "As suas decisões prevalecem sobre a pontuação: um domínio marcado como falso é sempre bloqueado (no modo Bloquear), um marcado como legítimo nunca é. São guardadas pelo worker, que também as usa para melhorar a sua pontuação."
+
+msgid "Fake shop"
+msgstr "Loja falsa"
+
+msgid "Legitimate"
+msgstr "Legítimo"
+
+msgid "One domain per line, to report them (HaGeZi, Signal Arnaques)"
+msgstr "Um domínio por linha, para os denunciar (HaGeZi, Signal Arnaques)"
+
+msgid "Export the fake shops"
+msgstr "Exportar as lojas falsas"
+
+msgid "Decision"
+msgstr "Decisão"
+
+msgid "Since"
+msgstr "Desde"
+
+msgid "Computed score"
+msgstr "Pontuação calculada"
+
+msgid "Worker"
+msgstr "Worker"
+
+msgid "Status"
+msgstr "Estado"
+
+msgid "Domains waiting for analysis"
+msgstr "Domínios a aguardar análise"
+
+msgid "Last collection"
+msgstr "Última recolha"
+
+msgid "Blocking"
+msgstr "Bloqueio"
+
+msgid "Unbound statistics are disabled: enable them in Reporting -> Unbound DNS, Settings tab. ShopGuard reads the domains from there."
+msgstr "As estatísticas do Unbound estão desativadas: ative-as em Relatórios -> Unbound DNS, separador Definições. O ShopGuard lê os domínios a partir daí."
+
+msgid "No worker URL configured."
+msgstr "Nenhum URL de worker configurado."
+
+msgid "Search for part of a domain name."
+msgstr "Pesquise uma parte de um nome de domínio."
+
+msgid "Unexpected answer from the worker."
+msgstr "Resposta inesperada do worker."
+
+msgid "Set the worker URL and token first."
+msgstr "Defina primeiro o URL e o token do worker."
+
+msgid "Cannot read the Unbound database: %s"
+msgstr "Não é possível ler a base de dados do Unbound: %s"
+
+msgid "Blocklist not updated, the previous one stays: %s"
+msgstr "Lista de bloqueio não atualizada, mantém-se a anterior: %s"
+
+msgid "The worker refused the token."
+msgstr "O worker recusou o token."
+
+msgid "The worker is too old for decisions: update it to 0.9 or later."
+msgstr "O worker é demasiado antigo para decisões: atualize-o para 0.9 ou posterior."
+
+msgid "Worker error: HTTP %d."
+msgstr "Erro do worker: HTTP %d."
+
+msgid "Worker unreachable: %s"
+msgstr "Worker inacessível: %s"
+
+msgid "Not a public domain name."
+msgstr "Não é um nome de domínio público."
+
+msgid "The decision is fake, legit or none."
+msgstr "A decisão é fake, legit ou none."
+
+msgid "Cannot read the configuration: %s"
+msgstr "Não é possível ler a configuração: %s"

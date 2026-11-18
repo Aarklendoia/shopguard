@@ -1,0 +1,272 @@
+# Machine translation, not reviewed by a native speaker: corrections are welcome.
+msgid ""
+msgstr ""
+"Project-Id-Version: os-shopguard\n"
+"PO-Revision-Date: 2026-11-18 15:00+0100\n"
+"Last-Translator: machine translation\n"
+"Language-Team: Chinese (Traditional)\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "the cron job could not be updated."
+msgstr "無法更新 cron 工作。"
+
+msgid "Enter a domain name."
+msgstr "請輸入網域名稱。"
+
+msgid "Enable"
+msgstr "啟用"
+
+msgid "Send the domains resolved by Unbound to the worker. Only domain names are sent, never client addresses."
+msgstr "將 Unbound 解析的網域傳送給 worker。只傳送網域名稱，絕不傳送用戶端位址。"
+
+msgid "Worker URL"
+msgstr "Worker URL"
+
+msgid "http://htpc.lan:8080"
+msgstr "http://htpc.lan:8080"
+
+msgid "Base URL of the shopguard-worker container."
+msgstr "shopguard-worker 容器的基礎 URL。"
+
+msgid "Token"
+msgstr "權杖"
+
+msgid "SHOPGUARD_TOKEN of the worker."
+msgstr "worker 的 SHOPGUARD_TOKEN。"
+
+msgid "Mode"
+msgstr "模式"
+
+msgid "Observe only: suspicious domains are listed here. Block: the domains scoring at least the threshold, with their subdomains, are also blocked by Unbound (answered NXDOMAIN, updated every 5 minutes). They appear in Reporting -> Unbound DNS as blocked by ShopGuard."
+msgstr "僅觀察：可疑網域會列在此處。封鎖：分數達到門檻的網域及其子網域也會被 Unbound 封鎖（回應 NXDOMAIN，每 5 分鐘更新）。它們會在 報告 -> Unbound DNS 中顯示為被 ShopGuard 封鎖。"
+
+msgid "Score threshold"
+msgstr "分數門檻"
+
+msgid "Domains scoring at least this value (1 to 100) are considered fake shops."
+msgstr "分數達到此值（1 到 100）的網域會被視為假商店。"
+
+msgid "Use the worker base URL, e.g. http://htpc.lan:8080 or http://[2001:db8::10]:8080."
+msgstr "請使用 worker 的基礎 URL，例如 http://htpc.lan:8080 或 http://[2001:db8::10]:8080。"
+
+msgid "The token is the SHOPGUARD_TOKEN of the worker: at least 32 characters."
+msgstr "權杖是 worker 的 SHOPGUARD_TOKEN：至少 32 個字元。"
+
+msgid "Observe only"
+msgstr "僅觀察"
+
+msgid "Block in Unbound"
+msgstr "在 Unbound 中封鎖"
+
+msgid "Choose a score from 1 to 100."
+msgstr "請選擇 1 到 100 的分數。"
+
+msgid "Reachable (version %s)"
+msgstr "可連線（版本 %s）"
+
+msgid "Unreachable"
+msgstr "無法連線"
+
+msgid "%s domains blocked in Unbound (being applied…)"
+msgstr "Unbound 中已封鎖 %s 個網域（套用中…）"
+
+msgid "%s domains blocked in Unbound"
+msgstr "Unbound 中已封鎖 %s 個網域"
+
+msgid "Observe only: nothing blocked"
+msgstr "僅觀察：不封鎖任何內容"
+
+msgid "Disabled"
+msgstr "已停用"
+
+msgid "Not run yet"
+msgstr "尚未執行"
+
+msgid "%s: %s new domains sent"
+msgstr "%s：已傳送 %s 個新網域"
+
+msgid "Settings saved, but:"
+msgstr "設定已儲存，但："
+
+msgid "the blocklist could not be updated."
+msgstr "無法更新封鎖清單。"
+
+msgid "Settings applied: %s domains blocked in Unbound."
+msgstr "設定已套用：Unbound 中已封鎖 %s 個網域。"
+
+msgid "Unbound applies the changes within 1 to 2 minutes."
+msgstr "Unbound 會在 1 到 2 分鐘內套用變更。"
+
+msgid "Settings applied: observe only, nothing is blocked."
+msgstr "設定已套用：僅觀察，不封鎖任何內容。"
+
+msgid "Settings applied: ShopGuard is disabled."
+msgstr "設定已套用：ShopGuard 已停用。"
+
+msgid "ShopGuard"
+msgstr "ShopGuard"
+
+msgid "The decision was not saved."
+msgstr "決定未儲存。"
+
+msgid "Saved. Unbound applies it within 1 to 2 minutes."
+msgstr "已儲存。Unbound 會在 1 到 2 分鐘內套用。"
+
+msgid "Saved."
+msgstr "已儲存。"
+
+msgid "marked fake"
+msgstr "已標記為假"
+
+msgid "marked legitimate"
+msgstr "已標記為合法"
+
+msgid "not analyzed yet"
+msgstr "尚未分析"
+
+msgid "Forget the decision"
+msgstr "撤銷決定"
+
+msgid "No decision yet."
+msgstr "尚無決定。"
+
+msgid "Signals"
+msgstr "訊號"
+
+msgid "Legitimate: never block"
+msgstr "合法：永不封鎖"
+
+msgid "Fake shop: always block"
+msgstr "假商店：一律封鎖"
+
+msgid "Weight"
+msgstr "權重"
+
+msgid "Signal"
+msgstr "訊號"
+
+msgid "Detail"
+msgstr "詳細資料"
+
+msgid "%s — score %s"
+msgstr "%s — 分數 %s"
+
+msgid "Close"
+msgstr "關閉"
+
+msgid "Verdicts"
+msgstr "判定"
+
+msgid "Decisions"
+msgstr "決定"
+
+msgid "Settings"
+msgstr "設定"
+
+msgid "Minimum score"
+msgstr "最低分數"
+
+msgid "0 (all)"
+msgstr "0（全部）"
+
+msgid "blocking threshold"
+msgstr "封鎖門檻"
+
+msgid "Saving…"
+msgstr "儲存中…"
+
+msgid "Domain"
+msgstr "網域"
+
+msgid "Score"
+msgstr "分數"
+
+msgid "Last check"
+msgstr "最後檢查"
+
+msgid "Actions"
+msgstr "動作"
+
+msgid "Your decisions override the score: a domain marked fake is always blocked (in Block mode), one marked legitimate never is. They are kept by the worker, which also uses them to improve its scoring."
+msgstr "您的決定優先於分數：標記為假的網域一律封鎖（在封鎖模式下），標記為合法的網域永不封鎖。它們由 worker 保存，worker 也會用它們改進評分。"
+
+msgid "Fake shop"
+msgstr "假商店"
+
+msgid "Legitimate"
+msgstr "合法"
+
+msgid "One domain per line, to report them (HaGeZi, Signal Arnaques)"
+msgstr "每行一個網域，用於檢舉（HaGeZi、Signal Arnaques）"
+
+msgid "Export the fake shops"
+msgstr "匯出假商店"
+
+msgid "Decision"
+msgstr "決定"
+
+msgid "Since"
+msgstr "自"
+
+msgid "Computed score"
+msgstr "計算分數"
+
+msgid "Worker"
+msgstr "Worker"
+
+msgid "Status"
+msgstr "狀態"
+
+msgid "Domains waiting for analysis"
+msgstr "等待分析的網域"
+
+msgid "Last collection"
+msgstr "最後收集"
+
+msgid "Blocking"
+msgstr "封鎖"
+
+msgid "Unbound statistics are disabled: enable them in Reporting -> Unbound DNS, Settings tab. ShopGuard reads the domains from there."
+msgstr "Unbound 統計已停用：請在 報告 -> Unbound DNS 的「設定」分頁中啟用。ShopGuard 從那裡讀取網域。"
+
+msgid "No worker URL configured."
+msgstr "未設定 worker URL。"
+
+msgid "Search for part of a domain name."
+msgstr "請搜尋網域名稱的一部分。"
+
+msgid "Unexpected answer from the worker."
+msgstr "worker 傳回了非預期的回應。"
+
+msgid "Set the worker URL and token first."
+msgstr "請先設定 worker URL 和權杖。"
+
+msgid "Cannot read the Unbound database: %s"
+msgstr "無法讀取 Unbound 資料庫：%s"
+
+msgid "Blocklist not updated, the previous one stays: %s"
+msgstr "封鎖清單未更新，保留先前的清單：%s"
+
+msgid "The worker refused the token."
+msgstr "worker 拒絕了權杖。"
+
+msgid "The worker is too old for decisions: update it to 0.9 or later."
+msgstr "worker 版本過舊，不支援決定：請更新到 0.9 或更新版本。"
+
+msgid "Worker error: HTTP %d."
+msgstr "worker 錯誤：HTTP %d。"
+
+msgid "Worker unreachable: %s"
+msgstr "無法連線到 worker：%s"
+
+msgid "Not a public domain name."
+msgstr "不是公開網域名稱。"
+
+msgid "The decision is fake, legit or none."
+msgstr "決定只能是 fake、legit 或 none。"
+
+msgid "Cannot read the configuration: %s"
+msgstr "無法讀取設定：%s"

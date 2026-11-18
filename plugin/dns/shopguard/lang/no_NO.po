@@ -1,0 +1,272 @@
+# Machine translation, not reviewed by a native speaker: corrections are welcome.
+msgid ""
+msgstr ""
+"Project-Id-Version: os-shopguard\n"
+"PO-Revision-Date: 2026-11-18 15:00+0100\n"
+"Last-Translator: machine translation\n"
+"Language-Team: Norwegian\n"
+"Language: no_NO\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "the cron job could not be updated."
+msgstr "cron-jobben kunne ikke oppdateres."
+
+msgid "Enter a domain name."
+msgstr "Skriv inn et domenenavn."
+
+msgid "Enable"
+msgstr "Aktiver"
+
+msgid "Send the domains resolved by Unbound to the worker. Only domain names are sent, never client addresses."
+msgstr "Send domenene som Unbound slår opp til workeren. Bare domenenavn sendes, aldri klientadresser."
+
+msgid "Worker URL"
+msgstr "Worker-URL"
+
+msgid "http://htpc.lan:8080"
+msgstr "http://htpc.lan:8080"
+
+msgid "Base URL of the shopguard-worker container."
+msgstr "Basis-URL for shopguard-worker-containeren."
+
+msgid "Token"
+msgstr "Token"
+
+msgid "SHOPGUARD_TOKEN of the worker."
+msgstr "SHOPGUARD_TOKEN for workeren."
+
+msgid "Mode"
+msgstr "Modus"
+
+msgid "Observe only: suspicious domains are listed here. Block: the domains scoring at least the threshold, with their subdomains, are also blocked by Unbound (answered NXDOMAIN, updated every 5 minutes). They appear in Reporting -> Unbound DNS as blocked by ShopGuard."
+msgstr "Bare observer: mistenkelige domener listes her. Blokker: domener med poengsum på eller over terskelen, med underdomener, blokkeres også av Unbound (svar NXDOMAIN, oppdatert hvert 5. minutt). De vises under Rapportering -> Unbound DNS som blokkert av ShopGuard."
+
+msgid "Score threshold"
+msgstr "Poengterskel"
+
+msgid "Domains scoring at least this value (1 to 100) are considered fake shops."
+msgstr "Domener med poengsum på minst denne verdien (1 til 100) regnes som falske butikker."
+
+msgid "Use the worker base URL, e.g. http://htpc.lan:8080 or http://[2001:db8::10]:8080."
+msgstr "Bruk workerens basis-URL, f.eks. http://htpc.lan:8080 eller http://[2001:db8::10]:8080."
+
+msgid "The token is the SHOPGUARD_TOKEN of the worker: at least 32 characters."
+msgstr "Tokenet er workerens SHOPGUARD_TOKEN: minst 32 tegn."
+
+msgid "Observe only"
+msgstr "Bare observer"
+
+msgid "Block in Unbound"
+msgstr "Blokker i Unbound"
+
+msgid "Choose a score from 1 to 100."
+msgstr "Velg en poengsum fra 1 til 100."
+
+msgid "Reachable (version %s)"
+msgstr "Tilgjengelig (versjon %s)"
+
+msgid "Unreachable"
+msgstr "Utilgjengelig"
+
+msgid "%s domains blocked in Unbound (being applied…)"
+msgstr "%s domener blokkert i Unbound (tas i bruk…)"
+
+msgid "%s domains blocked in Unbound"
+msgstr "%s domener blokkert i Unbound"
+
+msgid "Observe only: nothing blocked"
+msgstr "Bare observasjon: ingenting blokkeres"
+
+msgid "Disabled"
+msgstr "Deaktivert"
+
+msgid "Not run yet"
+msgstr "Ikke kjørt ennå"
+
+msgid "%s: %s new domains sent"
+msgstr "%s: %s nye domener sendt"
+
+msgid "Settings saved, but:"
+msgstr "Innstillinger lagret, men:"
+
+msgid "the blocklist could not be updated."
+msgstr "blokkeringslisten kunne ikke oppdateres."
+
+msgid "Settings applied: %s domains blocked in Unbound."
+msgstr "Innstillinger tatt i bruk: %s domener blokkert i Unbound."
+
+msgid "Unbound applies the changes within 1 to 2 minutes."
+msgstr "Unbound tar endringene i bruk innen 1 til 2 minutter."
+
+msgid "Settings applied: observe only, nothing is blocked."
+msgstr "Innstillinger tatt i bruk: bare observasjon, ingenting blokkeres."
+
+msgid "Settings applied: ShopGuard is disabled."
+msgstr "Innstillinger tatt i bruk: ShopGuard er deaktivert."
+
+msgid "ShopGuard"
+msgstr "ShopGuard"
+
+msgid "The decision was not saved."
+msgstr "Avgjørelsen ble ikke lagret."
+
+msgid "Saved. Unbound applies it within 1 to 2 minutes."
+msgstr "Lagret. Unbound tar den i bruk innen 1 til 2 minutter."
+
+msgid "Saved."
+msgstr "Lagret."
+
+msgid "marked fake"
+msgstr "merket som falsk"
+
+msgid "marked legitimate"
+msgstr "merket som legitim"
+
+msgid "not analyzed yet"
+msgstr "ikke analysert ennå"
+
+msgid "Forget the decision"
+msgstr "Glem avgjørelsen"
+
+msgid "No decision yet."
+msgstr "Ingen avgjørelser ennå."
+
+msgid "Signals"
+msgstr "Signaler"
+
+msgid "Legitimate: never block"
+msgstr "Legitim: blokker aldri"
+
+msgid "Fake shop: always block"
+msgstr "Falsk butikk: blokker alltid"
+
+msgid "Weight"
+msgstr "Vekt"
+
+msgid "Signal"
+msgstr "Signal"
+
+msgid "Detail"
+msgstr "Detalj"
+
+msgid "%s — score %s"
+msgstr "%s — poengsum %s"
+
+msgid "Close"
+msgstr "Lukk"
+
+msgid "Verdicts"
+msgstr "Vurderinger"
+
+msgid "Decisions"
+msgstr "Avgjørelser"
+
+msgid "Settings"
+msgstr "Innstillinger"
+
+msgid "Minimum score"
+msgstr "Minste poengsum"
+
+msgid "0 (all)"
+msgstr "0 (alle)"
+
+msgid "blocking threshold"
+msgstr "blokkeringsterskel"
+
+msgid "Saving…"
+msgstr "Lagrer…"
+
+msgid "Domain"
+msgstr "Domene"
+
+msgid "Score"
+msgstr "Poengsum"
+
+msgid "Last check"
+msgstr "Siste kontroll"
+
+msgid "Actions"
+msgstr "Handlinger"
+
+msgid "Your decisions override the score: a domain marked fake is always blocked (in Block mode), one marked legitimate never is. They are kept by the worker, which also uses them to improve its scoring."
+msgstr "Avgjørelsene dine går foran poengsummen: et domene merket som falskt blokkeres alltid (i modusen Blokker), et merket som legitimt aldri. De lagres av workeren, som også bruker dem til å forbedre poengberegningen."
+
+msgid "Fake shop"
+msgstr "Falsk butikk"
+
+msgid "Legitimate"
+msgstr "Legitim"
+
+msgid "One domain per line, to report them (HaGeZi, Signal Arnaques)"
+msgstr "Ett domene per linje, for å rapportere dem (HaGeZi, Signal Arnaques)"
+
+msgid "Export the fake shops"
+msgstr "Eksporter de falske butikkene"
+
+msgid "Decision"
+msgstr "Avgjørelse"
+
+msgid "Since"
+msgstr "Siden"
+
+msgid "Computed score"
+msgstr "Beregnet poengsum"
+
+msgid "Worker"
+msgstr "Worker"
+
+msgid "Status"
+msgstr "Status"
+
+msgid "Domains waiting for analysis"
+msgstr "Domener som venter på analyse"
+
+msgid "Last collection"
+msgstr "Siste innsamling"
+
+msgid "Blocking"
+msgstr "Blokkering"
+
+msgid "Unbound statistics are disabled: enable them in Reporting -> Unbound DNS, Settings tab. ShopGuard reads the domains from there."
+msgstr "Unbound-statistikk er deaktivert: aktiver den under Rapportering -> Unbound DNS, fanen Innstillinger. ShopGuard leser domenene derfra."
+
+msgid "No worker URL configured."
+msgstr "Ingen worker-URL er konfigurert."
+
+msgid "Search for part of a domain name."
+msgstr "Søk etter en del av et domenenavn."
+
+msgid "Unexpected answer from the worker."
+msgstr "Uventet svar fra workeren."
+
+msgid "Set the worker URL and token first."
+msgstr "Angi worker-URL og token først."
+
+msgid "Cannot read the Unbound database: %s"
+msgstr "Kan ikke lese Unbound-databasen: %s"
+
+msgid "Blocklist not updated, the previous one stays: %s"
+msgstr "Blokkeringslisten ble ikke oppdatert, den forrige beholdes: %s"
+
+msgid "The worker refused the token."
+msgstr "Workeren avviste tokenet."
+
+msgid "The worker is too old for decisions: update it to 0.9 or later."
+msgstr "Workeren er for gammel for avgjørelser: oppdater den til 0.9 eller nyere."
+
+msgid "Worker error: HTTP %d."
+msgstr "Worker-feil: HTTP %d."
+
+msgid "Worker unreachable: %s"
+msgstr "Workeren er utilgjengelig: %s"
+
+msgid "Not a public domain name."
+msgstr "Ikke et offentlig domenenavn."
+
+msgid "The decision is fake, legit or none."
+msgstr "Avgjørelsen er fake, legit eller none."
+
+msgid "Cannot read the configuration: %s"
+msgstr "Kan ikke lese konfigurasjonen: %s"

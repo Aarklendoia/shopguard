@@ -1,0 +1,272 @@
+# Machine translation, not reviewed by a native speaker: corrections are welcome.
+msgid ""
+msgstr ""
+"Project-Id-Version: os-shopguard\n"
+"PO-Revision-Date: 2026-11-18 15:00+0100\n"
+"Last-Translator: machine translation\n"
+"Language-Team: Turkish\n"
+"Language: tr_TR\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "the cron job could not be updated."
+msgstr "cron görevi güncellenemedi."
+
+msgid "Enter a domain name."
+msgstr "Bir alan adı girin."
+
+msgid "Enable"
+msgstr "Etkinleştir"
+
+msgid "Send the domains resolved by Unbound to the worker. Only domain names are sent, never client addresses."
+msgstr "Unbound tarafından çözümlenen alan adlarını worker'a gönder. Yalnızca alan adları gönderilir, istemci adresleri asla gönderilmez."
+
+msgid "Worker URL"
+msgstr "Worker URL'si"
+
+msgid "http://htpc.lan:8080"
+msgstr "http://htpc.lan:8080"
+
+msgid "Base URL of the shopguard-worker container."
+msgstr "shopguard-worker konteynerinin temel URL'si."
+
+msgid "Token"
+msgstr "Belirteç"
+
+msgid "SHOPGUARD_TOKEN of the worker."
+msgstr "Worker'ın SHOPGUARD_TOKEN değeri."
+
+msgid "Mode"
+msgstr "Mod"
+
+msgid "Observe only: suspicious domains are listed here. Block: the domains scoring at least the threshold, with their subdomains, are also blocked by Unbound (answered NXDOMAIN, updated every 5 minutes). They appear in Reporting -> Unbound DNS as blocked by ShopGuard."
+msgstr "Yalnızca gözlem: şüpheli alan adları burada listelenir. Engelle: puanı eşiğe ulaşan alan adları, alt alan adlarıyla birlikte Unbound tarafından da engellenir (NXDOMAIN yanıtı, 5 dakikada bir güncellenir). Raporlama -> Unbound DNS altında ShopGuard tarafından engellenmiş olarak görünürler."
+
+msgid "Score threshold"
+msgstr "Puan eşiği"
+
+msgid "Domains scoring at least this value (1 to 100) are considered fake shops."
+msgstr "Puanı bu değere (1 ile 100 arası) ulaşan alan adları sahte mağaza kabul edilir."
+
+msgid "Use the worker base URL, e.g. http://htpc.lan:8080 or http://[2001:db8::10]:8080."
+msgstr "Worker'ın temel URL'sini kullanın, ör. http://htpc.lan:8080 veya http://[2001:db8::10]:8080."
+
+msgid "The token is the SHOPGUARD_TOKEN of the worker: at least 32 characters."
+msgstr "Belirteç, worker'ın SHOPGUARD_TOKEN değeridir: en az 32 karakter."
+
+msgid "Observe only"
+msgstr "Yalnızca gözlem"
+
+msgid "Block in Unbound"
+msgstr "Unbound'da engelle"
+
+msgid "Choose a score from 1 to 100."
+msgstr "1 ile 100 arasında bir puan seçin."
+
+msgid "Reachable (version %s)"
+msgstr "Erişilebilir (sürüm %s)"
+
+msgid "Unreachable"
+msgstr "Erişilemiyor"
+
+msgid "%s domains blocked in Unbound (being applied…)"
+msgstr "Unbound'da engellenen alan adı: %s (uygulanıyor…)"
+
+msgid "%s domains blocked in Unbound"
+msgstr "Unbound'da engellenen alan adı: %s"
+
+msgid "Observe only: nothing blocked"
+msgstr "Yalnızca gözlem: hiçbir şey engellenmiyor"
+
+msgid "Disabled"
+msgstr "Devre dışı"
+
+msgid "Not run yet"
+msgstr "Henüz çalıştırılmadı"
+
+msgid "%s: %s new domains sent"
+msgstr "%s: gönderilen yeni alan adı: %s"
+
+msgid "Settings saved, but:"
+msgstr "Ayarlar kaydedildi, ancak:"
+
+msgid "the blocklist could not be updated."
+msgstr "engelleme listesi güncellenemedi."
+
+msgid "Settings applied: %s domains blocked in Unbound."
+msgstr "Ayarlar uygulandı: Unbound'da engellenen alan adı: %s."
+
+msgid "Unbound applies the changes within 1 to 2 minutes."
+msgstr "Unbound değişiklikleri 1-2 dakika içinde uygular."
+
+msgid "Settings applied: observe only, nothing is blocked."
+msgstr "Ayarlar uygulandı: yalnızca gözlem, hiçbir şey engellenmiyor."
+
+msgid "Settings applied: ShopGuard is disabled."
+msgstr "Ayarlar uygulandı: ShopGuard devre dışı."
+
+msgid "ShopGuard"
+msgstr "ShopGuard"
+
+msgid "The decision was not saved."
+msgstr "Karar kaydedilmedi."
+
+msgid "Saved. Unbound applies it within 1 to 2 minutes."
+msgstr "Kaydedildi. Unbound bunu 1-2 dakika içinde uygular."
+
+msgid "Saved."
+msgstr "Kaydedildi."
+
+msgid "marked fake"
+msgstr "sahte olarak işaretlendi"
+
+msgid "marked legitimate"
+msgstr "meşru olarak işaretlendi"
+
+msgid "not analyzed yet"
+msgstr "henüz analiz edilmedi"
+
+msgid "Forget the decision"
+msgstr "Kararı unut"
+
+msgid "No decision yet."
+msgstr "Henüz karar yok."
+
+msgid "Signals"
+msgstr "Sinyaller"
+
+msgid "Legitimate: never block"
+msgstr "Meşru: asla engelleme"
+
+msgid "Fake shop: always block"
+msgstr "Sahte mağaza: her zaman engelle"
+
+msgid "Weight"
+msgstr "Ağırlık"
+
+msgid "Signal"
+msgstr "Sinyal"
+
+msgid "Detail"
+msgstr "Ayrıntı"
+
+msgid "%s — score %s"
+msgstr "%s — puan %s"
+
+msgid "Close"
+msgstr "Kapat"
+
+msgid "Verdicts"
+msgstr "Sonuçlar"
+
+msgid "Decisions"
+msgstr "Kararlar"
+
+msgid "Settings"
+msgstr "Ayarlar"
+
+msgid "Minimum score"
+msgstr "En düşük puan"
+
+msgid "0 (all)"
+msgstr "0 (tümü)"
+
+msgid "blocking threshold"
+msgstr "engelleme eşiği"
+
+msgid "Saving…"
+msgstr "Kaydediliyor…"
+
+msgid "Domain"
+msgstr "Alan adı"
+
+msgid "Score"
+msgstr "Puan"
+
+msgid "Last check"
+msgstr "Son kontrol"
+
+msgid "Actions"
+msgstr "Eylemler"
+
+msgid "Your decisions override the score: a domain marked fake is always blocked (in Block mode), one marked legitimate never is. They are kept by the worker, which also uses them to improve its scoring."
+msgstr "Kararlarınız puanın önüne geçer: sahte olarak işaretlenen bir alan adı her zaman engellenir (Engelle modunda), meşru olarak işaretlenen ise asla. Bunlar worker tarafından saklanır ve puanlamasını iyileştirmek için de kullanılır."
+
+msgid "Fake shop"
+msgstr "Sahte mağaza"
+
+msgid "Legitimate"
+msgstr "Meşru"
+
+msgid "One domain per line, to report them (HaGeZi, Signal Arnaques)"
+msgstr "Bildirmek için satır başına bir alan adı (HaGeZi, Signal Arnaques)"
+
+msgid "Export the fake shops"
+msgstr "Sahte mağazaları dışa aktar"
+
+msgid "Decision"
+msgstr "Karar"
+
+msgid "Since"
+msgstr "Tarih"
+
+msgid "Computed score"
+msgstr "Hesaplanan puan"
+
+msgid "Worker"
+msgstr "Worker"
+
+msgid "Status"
+msgstr "Durum"
+
+msgid "Domains waiting for analysis"
+msgstr "Analiz bekleyen alan adları"
+
+msgid "Last collection"
+msgstr "Son toplama"
+
+msgid "Blocking"
+msgstr "Engelleme"
+
+msgid "Unbound statistics are disabled: enable them in Reporting -> Unbound DNS, Settings tab. ShopGuard reads the domains from there."
+msgstr "Unbound istatistikleri devre dışı: Raporlama -> Unbound DNS, Ayarlar sekmesinden etkinleştirin. ShopGuard alan adlarını oradan okur."
+
+msgid "No worker URL configured."
+msgstr "Worker URL'si yapılandırılmamış."
+
+msgid "Search for part of a domain name."
+msgstr "Bir alan adının bir kısmını arayın."
+
+msgid "Unexpected answer from the worker."
+msgstr "Worker'dan beklenmeyen yanıt."
+
+msgid "Set the worker URL and token first."
+msgstr "Önce worker URL'sini ve belirtecini ayarlayın."
+
+msgid "Cannot read the Unbound database: %s"
+msgstr "Unbound veritabanı okunamıyor: %s"
+
+msgid "Blocklist not updated, the previous one stays: %s"
+msgstr "Engelleme listesi güncellenmedi, öncekisi korunuyor: %s"
+
+msgid "The worker refused the token."
+msgstr "Worker belirteci reddetti."
+
+msgid "The worker is too old for decisions: update it to 0.9 or later."
+msgstr "Worker kararlar için çok eski: 0.9 veya sonrasına güncelleyin."
+
+msgid "Worker error: HTTP %d."
+msgstr "Worker hatası: HTTP %d."
+
+msgid "Worker unreachable: %s"
+msgstr "Worker'a erişilemiyor: %s"
+
+msgid "Not a public domain name."
+msgstr "Genel bir alan adı değil."
+
+msgid "The decision is fake, legit or none."
+msgstr "Karar fake, legit veya none olmalıdır."
+
+msgid "Cannot read the configuration: %s"
+msgstr "Yapılandırma okunamıyor: %s"

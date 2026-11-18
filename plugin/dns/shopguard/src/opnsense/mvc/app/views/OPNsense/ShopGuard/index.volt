@@ -26,6 +26,16 @@
 
 <script>
     $(document).ready(function () {
+        // translations come HTML-escaped (safe in HTML): decoded for .text() and dialogs
+        function tr(text) {
+            return $('<textarea/>').html(text).text();
+        }
+
+        // tr() with each %s replaced by the next argument
+        function fmt(text) {
+            var args = Array.prototype.slice.call(arguments, 1);
+            return tr(text).replace(/%s/g, function () { return args.length ? String(args.shift()) : ''; });
+        }
         mapDataToFormUI({'frm_general': '/api/shopguard/settings/get'}).done(function () {
             formatTokenizersUI();
             $('.selectpicker').selectpicker('refresh');
@@ -34,27 +44,28 @@
         function refreshStatus() {
             ajaxGet('/api/shopguard/service/status', {}, function (data) {
                 if (data.status === 'ok') {
-                    $('#st_worker').text('{{ lang._('Reachable') }} (' + data.version + ')');
+                    $('#st_worker').text(fmt('{{ sgLang._('Reachable (version %s)') }}', data.version));
                     $('#st_pending').text(data.pending);
                 } else {
-                    $('#st_worker').text(data.message || '{{ lang._('Unreachable') }}');
+                    $('#st_worker').text(data.message || tr('{{ sgLang._('Unreachable') }}'));
                     $('#st_pending').text('');
                 }
                 if (data.mode === 'block') {
-                    $('#st_blocked').text(data.blocked + ' {{ lang._('domains blocked in Unbound') }}' +
-                        (data.applying ? ' ({{ lang._('being applied') }}…)' : ''));
+                    $('#st_blocked').text(fmt(data.applying
+                        ? '{{ sgLang._('%s domains blocked in Unbound (being applied…)') }}'
+                        : '{{ sgLang._('%s domains blocked in Unbound') }}', data.blocked));
                 } else if (data.mode === 'observe') {
-                    $('#st_blocked').text('{{ lang._('Observe only: nothing blocked') }}');
+                    $('#st_blocked').text(tr('{{ sgLang._('Observe only: nothing blocked') }}'));
                 } else {
-                    $('#st_blocked').text('{{ lang._('Disabled') }}');
+                    $('#st_blocked').text(tr('{{ sgLang._('Disabled') }}'));
                 }
                 var c = data.collect;
                 if (!c) {
-                    $('#st_collect').text('{{ lang._('Not run yet') }}');
+                    $('#st_collect').text(tr('{{ sgLang._('Not run yet') }}'));
                 } else {
                     var when = new Date(c.time * 1000).toLocaleString();
                     if (c.status === 'ok') {
-                        $('#st_collect').text(when + ': ' + c.queued + ' {{ lang._('new domains sent') }}');
+                        $('#st_collect').text(fmt('{{ sgLang._('%s: %s new domains sent') }}', when, c.queued));
                     } else if (c.status === 'error') {
                         $('#st_collect').text(when + ': ' + c.message);
                     } else {
@@ -83,16 +94,16 @@
                 ajaxCall('/api/shopguard/service/reconfigure', {}, function (data) {
                     applying(false);
                     if (data.status !== 'ok') {
-                        applied('warning', '{{ lang._('Settings saved, but:') }} ' +
-                            (data.message || '{{ lang._('the blocklist could not be updated.') }}'));
+                        applied('warning', tr('{{ sgLang._('Settings saved, but:') }}') + ' ' +
+                            (data.message || tr('{{ sgLang._('the blocklist could not be updated.') }}')));
                     } else if (data.mode === 'block') {
-                        applied('success', '{{ lang._('Settings applied:') }} ' + data.blocked +
-                            ' {{ lang._('domains blocked in Unbound.') }}' +
-                            (data.pending ? ' {{ lang._('Unbound applies the changes within 1 to 2 minutes.') }}' : ''));
+                        applied('success', fmt('{{ sgLang._('Settings applied: %s domains blocked in Unbound.') }}',
+                            data.blocked) + (data.pending
+                            ? ' ' + tr('{{ sgLang._('Unbound applies the changes within 1 to 2 minutes.') }}') : ''));
                     } else if (data.mode === 'observe') {
-                        applied('success', '{{ lang._('Settings applied: observe only, nothing is blocked.') }}');
+                        applied('success', tr('{{ sgLang._('Settings applied: observe only, nothing is blocked.') }}'));
                     } else {
-                        applied('success', '{{ lang._('Settings applied: ShopGuard is disabled.') }}');
+                        applied('success', tr('{{ sgLang._('Settings applied: ShopGuard is disabled.') }}'));
                     }
                     refreshStatus();
                 });
@@ -114,7 +125,7 @@
         function warn(message) {
             BootstrapDialog.show({
                 type: BootstrapDialog.TYPE_WARNING,
-                title: '{{ lang._('ShopGuard') }}',
+                title: tr('{{ sgLang._('ShopGuard') }}'),
                 message: $('<div/>').text(message)
             });
         }
@@ -145,13 +156,13 @@
             ajaxCall('/api/shopguard/service/feedback', {domain: domain, label: label}, function (data) {
                 deciding(false, button);
                 if (data.status !== 'ok') {
-                    warn(data.message || '{{ lang._('The decision was not saved.') }}');
+                    warn(data.message || tr('{{ sgLang._('The decision was not saved.') }}'));
                 } else if (data.message) {
                     warn(data.message);
                 } else {
                     var text = data.pending
-                        ? '{{ lang._('Saved. Unbound applies it within 1 to 2 minutes.') }}'
-                        : '{{ lang._('Saved.') }}';
+                        ? tr('{{ sgLang._('Saved. Unbound applies it within 1 to 2 minutes.') }}')
+                        : tr('{{ sgLang._('Saved.') }}');
                     $('#decide_info, #decide_info_grid').text(text).stop(true, true).show().delay(8000).fadeOut();
                 }
                 $('#grid-verdicts').bootgrid('reload');
@@ -163,8 +174,8 @@
         function decisionBadge(feedback) {
             if (!feedback) return '';
             return feedback.label === 'fake'
-                ? ' <span class="label label-danger">{{ lang._('marked fake') }}</span>'
-                : ' <span class="label label-success">{{ lang._('marked legitimate') }}</span>';
+                ? ' <span class="label label-danger">{{ sgLang._('marked fake') }}</span>'
+                : ' <span class="label label-success">{{ sgLang._('marked legitimate') }}</span>';
         }
 
         var labels = [];
@@ -179,10 +190,10 @@
                         .append($('<td/>').text(r.domain))
                         .append($('<td/>').html(decisionBadge({label: r.label})))
                         .append($('<td/>').text(r.at ? new Date(r.at * 1000).toLocaleString() : ''))
-                        .append($('<td/>').text(r.checked_at ? r.score : '{{ lang._('not analyzed yet') }}'))
+                        .append($('<td/>').text(r.checked_at ? r.score : tr('{{ sgLang._('not analyzed yet') }}')))
                         .append($('<td/>').append(
                             $('<button type="button" class="btn btn-xs btn-default"/>')
-                                .attr('title', '{{ lang._('Forget the decision') }}')
+                                .attr('title', tr('{{ sgLang._('Forget the decision') }}'))
                                 .append('<span class="fa fa-fw fa-undo"></span>')
                                 .addClass('decision-forget')
                                 .on('click', function () { decide(r.domain, 'none', this); })
@@ -190,7 +201,7 @@
                         .appendTo(body);
                 });
                 if (!labels.length) {
-                    $('<tr/>').append($('<td colspan="5"/>').text('{{ lang._('No decision yet.') }}')).appendTo(body);
+                    $('<tr/>').append($('<td colspan="5"/>').text(tr('{{ sgLang._('No decision yet.') }}'))).appendTo(body);
                 }
                 // hidden rather than disabled (a disabled button is a grey square in the dark theme)
                 $('#export_fake').toggle(labels.some(function (r) { return r.label === 'fake'; }));
@@ -221,16 +232,16 @@
         function buttons(row) {
             var id = ' data-row-id="' + esc(row.domain) + '"';
             var out = '<button type="button" class="btn btn-xs btn-default bootgrid-tooltip verdict-details"' + id +
-                ' title="{{ lang._('Signals') }}"><span class="fa fa-fw fa-info-circle"></span></button> ';
+                ' title="{{ sgLang._('Signals') }}"><span class="fa fa-fw fa-info-circle"></span></button> ';
             if (row.feedback) {
                 return out + '<button type="button" class="btn btn-xs btn-default bootgrid-tooltip verdict-decide"' + id +
-                    ' data-label="none" title="{{ lang._('Forget the decision') }}"><span class="fa fa-fw fa-undo"></span></button>';
+                    ' data-label="none" title="{{ sgLang._('Forget the decision') }}"><span class="fa fa-fw fa-undo"></span></button>';
             }
             return out +
                 '<button type="button" class="btn btn-xs btn-default bootgrid-tooltip verdict-decide"' + id +
-                ' data-label="legit" title="{{ lang._('Legitimate: never block') }}"><span class="fa fa-fw fa-check"></span></button> ' +
+                ' data-label="legit" title="{{ sgLang._('Legitimate: never block') }}"><span class="fa fa-fw fa-check"></span></button> ' +
                 '<button type="button" class="btn btn-xs btn-default bootgrid-tooltip verdict-decide"' + id +
-                ' data-label="fake" title="{{ lang._('Fake shop: always block') }}"><span class="fa fa-fw fa-ban"></span></button>';
+                ' data-label="fake" title="{{ sgLang._('Fake shop: always block') }}"><span class="fa fa-fw fa-ban"></span></button>';
         }
 
         function scoreClass(score) {
@@ -288,9 +299,9 @@
                 // thead/tbody: Bootstrap styles the cells only inside them
                 var table = $('<table class="table table-condensed table-striped"/>');
                 $('<thead/>').append($('<tr/>')
-                    .append($('<th style="width: 5em; text-align: right;"/>').text('{{ lang._('Weight') }}'))
-                    .append($('<th style="width: 1%; white-space: nowrap;"/>').text('{{ lang._('Signal') }}'))
-                    .append($('<th/>').text('{{ lang._('Detail') }}'))
+                    .append($('<th style="width: 5em; text-align: right;"/>').text(tr('{{ sgLang._('Weight') }}')))
+                    .append($('<th style="width: 1%; white-space: nowrap;"/>').text(tr('{{ sgLang._('Signal') }}')))
+                    .append($('<th/>').text(tr('{{ sgLang._('Detail') }}')))
                 ).appendTo(table);
                 var body = $('<tbody/>').appendTo(table);
                 // what makes the score first, the record (weight 0) after, greyed
@@ -318,10 +329,10 @@
                     }
                 });
                 BootstrapDialog.show({
-                    title: $('<span/>').text(row.domain + ' — {{ lang._('score') }} ' + row.score),
+                    title: $('<span/>').text(fmt('{{ sgLang._('%s — score %s') }}', row.domain, row.score)),
                     message: table,
                     size: BootstrapDialog.SIZE_WIDE,
-                    buttons: [{label: '{{ lang._('Close') }}', action: function (dlg) { dlg.close(); }}]
+                    buttons: [{label: tr('{{ sgLang._('Close') }}'), action: function (dlg) { dlg.close(); }}]
                 });
             });
         });
@@ -333,34 +344,34 @@
 </script>
 
 <ul class="nav nav-tabs" data-tabs="tabs" id="maintabs">
-    <li class="active"><a data-toggle="tab" href="#verdicts">{{ lang._('Verdicts') }}</a></li>
-    <li><a data-toggle="tab" href="#decisions">{{ lang._('Decisions') }}</a></li>
-    <li><a data-toggle="tab" href="#settings">{{ lang._('Settings') }}</a></li>
+    <li class="active"><a data-toggle="tab" href="#verdicts">{{ sgLang._('Verdicts') }}</a></li>
+    <li><a data-toggle="tab" href="#decisions">{{ sgLang._('Decisions') }}</a></li>
+    <li><a data-toggle="tab" href="#settings">{{ sgLang._('Settings') }}</a></li>
 </ul>
 
 <div class="tab-content content-box">
 <div id="verdicts" class="tab-pane fade in active">
     <div class="form-inline" style="padding: 1em 1em 0;">
-        <label for="min_score">{{ lang._('Minimum score') }}</label>
+        <label for="min_score">{{ sgLang._('Minimum score') }}</label>
         <select id="min_score" class="form-control" style="width: auto; margin-left: .5em;">
-            <option value="0" selected="selected">0 ({{ lang._('all') }})</option>
+            <option value="0" selected="selected">{{ sgLang._('0 (all)') }}</option>
             <option value="1">1</option>
             <option value="30">30</option>
             <option value="50">50</option>
-            <option value="{{ threshold }}">{{ threshold }} ({{ lang._('blocking threshold') }})</option>
+            <option value="{{ threshold }}">{{ threshold }} ({{ sgLang._('blocking threshold') }})</option>
         </select>
         <span id="verdicts_message" class="text-danger" style="margin-left: 1em; display: none;"></span>
-        <span id="decide_progress_grid" style="margin-left: 1em; display: none;"><i class="fa fa-spinner fa-pulse"></i> {{ lang._('Saving…') }}</span>
+        <span id="decide_progress_grid" style="margin-left: 1em; display: none;"><i class="fa fa-spinner fa-pulse"></i> {{ sgLang._('Saving…') }}</span>
         <span id="decide_info_grid" class="text-success" style="margin-left: 1em; display: none;"></span>
     </div>
     <table id="grid-verdicts" class="table table-condensed table-hover table-striped">
         <thead>
             <tr>
-                <th data-column-id="domain" data-type="string" data-identifier="true" data-formatter="domain">{{ lang._('Domain') }}</th>
-                <th data-column-id="score" data-type="numeric" data-min-width="70" data-max-width="90" data-formatter="score">{{ lang._('Score') }}</th>
-                <th data-column-id="signals" data-formatter="signals">{{ lang._('Signals') }}</th>
-                <th data-column-id="checked_at" data-min-width="165" data-max-width="200" data-formatter="checked">{{ lang._('Last check') }}</th>
-                <th data-column-id="commands" data-width="110" data-formatter="commands" data-sortable="false">{{ lang._('Actions') }}</th>
+                <th data-column-id="domain" data-type="string" data-identifier="true" data-formatter="domain">{{ sgLang._('Domain') }}</th>
+                <th data-column-id="score" data-type="numeric" data-min-width="70" data-max-width="90" data-formatter="score">{{ sgLang._('Score') }}</th>
+                <th data-column-id="signals" data-formatter="signals">{{ sgLang._('Signals') }}</th>
+                <th data-column-id="checked_at" data-min-width="165" data-max-width="200" data-formatter="checked">{{ sgLang._('Last check') }}</th>
+                <th data-column-id="commands" data-width="110" data-formatter="commands" data-sortable="false">{{ sgLang._('Actions') }}</th>
             </tr>
         </thead>
         <tbody></tbody>
@@ -369,26 +380,26 @@
 
 <div id="decisions" class="tab-pane fade">
     <div style="padding: 1em 1em 0;">
-        <p>{{ lang._('Your decisions override the score: a domain marked fake is always blocked (in Block mode), one marked legitimate never is. They are kept by the worker, which also uses them to improve its scoring.') }}</p>
+        <p>{{ sgLang._('Your decisions override the score: a domain marked fake is always blocked (in Block mode), one marked legitimate never is. They are kept by the worker, which also uses them to improve its scoring.') }}</p>
         <div class="form-inline">
             <input type="text" id="decide_domain" class="form-control" placeholder="example-shop.com" style="width: 20em;"/>
-            <button type="button" id="decide_fake" class="btn btn-danger"><span class="fa fa-fw fa-ban"></span> {{ lang._('Fake shop') }}</button>
-            <button type="button" id="decide_legit" class="btn btn-success"><span class="fa fa-fw fa-check"></span> {{ lang._('Legitimate') }}</button>
-            <span id="decide_progress" style="display: none;"><i class="fa fa-spinner fa-pulse"></i> {{ lang._('Saving…') }}</span>
+            <button type="button" id="decide_fake" class="btn btn-danger"><span class="fa fa-fw fa-ban"></span> {{ sgLang._('Fake shop') }}</button>
+            <button type="button" id="decide_legit" class="btn btn-success"><span class="fa fa-fw fa-check"></span> {{ sgLang._('Legitimate') }}</button>
+            <span id="decide_progress" style="display: none;"><i class="fa fa-spinner fa-pulse"></i> {{ sgLang._('Saving…') }}</span>
             <span id="decide_info" class="text-success" style="display: none;"></span>
             <button type="button" id="export_fake" class="btn btn-default pull-right" style="display: none;"
-                    title="{{ lang._('One domain per line, to report them (HaGeZi, Signal Arnaques)') }}">
-                <span class="fa fa-fw fa-download"></span> {{ lang._('Export the fake shops') }}</button>
+                    title="{{ sgLang._('One domain per line, to report them (HaGeZi, Signal Arnaques)') }}">
+                <span class="fa fa-fw fa-download"></span> {{ sgLang._('Export the fake shops') }}</button>
         </div>
         <span id="labels_message" class="text-danger" style="display: none;"></span>
     </div>
     <table id="labels" class="table table-condensed table-striped">
         <thead>
             <tr>
-                <th>{{ lang._('Domain') }}</th>
-                <th>{{ lang._('Decision') }}</th>
-                <th>{{ lang._('Since') }}</th>
-                <th>{{ lang._('Computed score') }}</th>
+                <th>{{ sgLang._('Domain') }}</th>
+                <th>{{ sgLang._('Decision') }}</th>
+                <th>{{ sgLang._('Since') }}</th>
+                <th>{{ sgLang._('Computed score') }}</th>
                 <th style="width: 5em;"></th>
             </tr>
         </thead>
@@ -400,13 +411,13 @@
 <div style="padding-bottom: 1.5em;">
     <table class="table table-condensed">
         <thead>
-            <tr><th colspan="2">{{ lang._('Worker') }}</th></tr>
+            <tr><th colspan="2">{{ sgLang._('Worker') }}</th></tr>
         </thead>
         <tbody>
-            <tr><td style="width:22%">{{ lang._('Status') }}</td><td id="st_worker"></td></tr>
-            <tr><td>{{ lang._('Domains waiting for analysis') }}</td><td id="st_pending"></td></tr>
-            <tr><td>{{ lang._('Last collection') }}</td><td id="st_collect"></td></tr>
-            <tr><td>{{ lang._('Blocking') }}</td><td id="st_blocked"></td></tr>
+            <tr><td style="width:22%">{{ sgLang._('Status') }}</td><td id="st_worker"></td></tr>
+            <tr><td>{{ sgLang._('Domains waiting for analysis') }}</td><td id="st_pending"></td></tr>
+            <tr><td>{{ sgLang._('Last collection') }}</td><td id="st_collect"></td></tr>
+            <tr><td>{{ sgLang._('Blocking') }}</td><td id="st_blocked"></td></tr>
         </tbody>
     </table>
 </div>

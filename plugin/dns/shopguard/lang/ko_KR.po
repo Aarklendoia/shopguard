@@ -1,0 +1,272 @@
+# Machine translation, not reviewed by a native speaker: corrections are welcome.
+msgid ""
+msgstr ""
+"Project-Id-Version: os-shopguard\n"
+"PO-Revision-Date: 2026-11-18 15:00+0100\n"
+"Last-Translator: machine translation\n"
+"Language-Team: Korean\n"
+"Language: ko_KR\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "the cron job could not be updated."
+msgstr "cron 작업을 업데이트할 수 없습니다."
+
+msgid "Enter a domain name."
+msgstr "도메인 이름을 입력하세요."
+
+msgid "Enable"
+msgstr "활성화"
+
+msgid "Send the domains resolved by Unbound to the worker. Only domain names are sent, never client addresses."
+msgstr "Unbound가 확인한 도메인을 worker로 보냅니다. 도메인 이름만 보내며 클라이언트 주소는 절대 보내지 않습니다."
+
+msgid "Worker URL"
+msgstr "Worker URL"
+
+msgid "http://htpc.lan:8080"
+msgstr "http://htpc.lan:8080"
+
+msgid "Base URL of the shopguard-worker container."
+msgstr "shopguard-worker 컨테이너의 기본 URL입니다."
+
+msgid "Token"
+msgstr "토큰"
+
+msgid "SHOPGUARD_TOKEN of the worker."
+msgstr "worker의 SHOPGUARD_TOKEN입니다."
+
+msgid "Mode"
+msgstr "모드"
+
+msgid "Observe only: suspicious domains are listed here. Block: the domains scoring at least the threshold, with their subdomains, are also blocked by Unbound (answered NXDOMAIN, updated every 5 minutes). They appear in Reporting -> Unbound DNS as blocked by ShopGuard."
+msgstr "관찰만: 의심스러운 도메인이 여기에 표시됩니다. 차단: 점수가 임계값에 도달한 도메인은 하위 도메인과 함께 Unbound에서도 차단됩니다(NXDOMAIN 응답, 5분마다 업데이트). 보고서 -> Unbound DNS에 ShopGuard가 차단한 것으로 표시됩니다."
+
+msgid "Score threshold"
+msgstr "점수 임계값"
+
+msgid "Domains scoring at least this value (1 to 100) are considered fake shops."
+msgstr "점수가 이 값(1~100)에 도달한 도메인은 가짜 쇼핑몰로 간주됩니다."
+
+msgid "Use the worker base URL, e.g. http://htpc.lan:8080 or http://[2001:db8::10]:8080."
+msgstr "worker의 기본 URL을 사용하세요. 예: http://htpc.lan:8080 또는 http://[2001:db8::10]:8080"
+
+msgid "The token is the SHOPGUARD_TOKEN of the worker: at least 32 characters."
+msgstr "토큰은 worker의 SHOPGUARD_TOKEN입니다: 32자 이상."
+
+msgid "Observe only"
+msgstr "관찰만"
+
+msgid "Block in Unbound"
+msgstr "Unbound에서 차단"
+
+msgid "Choose a score from 1 to 100."
+msgstr "1~100 사이의 점수를 선택하세요."
+
+msgid "Reachable (version %s)"
+msgstr "연결 가능(버전 %s)"
+
+msgid "Unreachable"
+msgstr "연결 불가"
+
+msgid "%s domains blocked in Unbound (being applied…)"
+msgstr "Unbound에서 차단된 도메인 %s개(적용 중…)"
+
+msgid "%s domains blocked in Unbound"
+msgstr "Unbound에서 차단된 도메인 %s개"
+
+msgid "Observe only: nothing blocked"
+msgstr "관찰만: 아무것도 차단하지 않음"
+
+msgid "Disabled"
+msgstr "비활성화됨"
+
+msgid "Not run yet"
+msgstr "아직 실행되지 않음"
+
+msgid "%s: %s new domains sent"
+msgstr "%s: 새 도메인 %s개 전송"
+
+msgid "Settings saved, but:"
+msgstr "설정이 저장되었지만:"
+
+msgid "the blocklist could not be updated."
+msgstr "차단 목록을 업데이트할 수 없습니다."
+
+msgid "Settings applied: %s domains blocked in Unbound."
+msgstr "설정 적용됨: Unbound에서 차단된 도메인 %s개."
+
+msgid "Unbound applies the changes within 1 to 2 minutes."
+msgstr "Unbound가 1~2분 안에 변경 사항을 적용합니다."
+
+msgid "Settings applied: observe only, nothing is blocked."
+msgstr "설정 적용됨: 관찰만, 아무것도 차단하지 않습니다."
+
+msgid "Settings applied: ShopGuard is disabled."
+msgstr "설정 적용됨: ShopGuard가 비활성화되었습니다."
+
+msgid "ShopGuard"
+msgstr "ShopGuard"
+
+msgid "The decision was not saved."
+msgstr "결정이 저장되지 않았습니다."
+
+msgid "Saved. Unbound applies it within 1 to 2 minutes."
+msgstr "저장되었습니다. Unbound가 1~2분 안에 적용합니다."
+
+msgid "Saved."
+msgstr "저장되었습니다."
+
+msgid "marked fake"
+msgstr "가짜로 표시됨"
+
+msgid "marked legitimate"
+msgstr "정상으로 표시됨"
+
+msgid "not analyzed yet"
+msgstr "아직 분석되지 않음"
+
+msgid "Forget the decision"
+msgstr "결정 취소"
+
+msgid "No decision yet."
+msgstr "아직 결정이 없습니다."
+
+msgid "Signals"
+msgstr "신호"
+
+msgid "Legitimate: never block"
+msgstr "정상: 차단하지 않음"
+
+msgid "Fake shop: always block"
+msgstr "가짜 쇼핑몰: 항상 차단"
+
+msgid "Weight"
+msgstr "가중치"
+
+msgid "Signal"
+msgstr "신호"
+
+msgid "Detail"
+msgstr "세부 정보"
+
+msgid "%s — score %s"
+msgstr "%s — 점수 %s"
+
+msgid "Close"
+msgstr "닫기"
+
+msgid "Verdicts"
+msgstr "판정"
+
+msgid "Decisions"
+msgstr "결정"
+
+msgid "Settings"
+msgstr "설정"
+
+msgid "Minimum score"
+msgstr "최소 점수"
+
+msgid "0 (all)"
+msgstr "0(전체)"
+
+msgid "blocking threshold"
+msgstr "차단 임계값"
+
+msgid "Saving…"
+msgstr "저장 중…"
+
+msgid "Domain"
+msgstr "도메인"
+
+msgid "Score"
+msgstr "점수"
+
+msgid "Last check"
+msgstr "마지막 확인"
+
+msgid "Actions"
+msgstr "작업"
+
+msgid "Your decisions override the score: a domain marked fake is always blocked (in Block mode), one marked legitimate never is. They are kept by the worker, which also uses them to improve its scoring."
+msgstr "결정은 점수보다 우선합니다: 가짜로 표시한 도메인은 항상 차단되고(차단 모드에서), 정상으로 표시한 도메인은 차단되지 않습니다. 결정은 worker에 보관되며 worker는 이를 점수 개선에도 사용합니다."
+
+msgid "Fake shop"
+msgstr "가짜 쇼핑몰"
+
+msgid "Legitimate"
+msgstr "정상"
+
+msgid "One domain per line, to report them (HaGeZi, Signal Arnaques)"
+msgstr "신고용으로 한 줄에 도메인 하나(HaGeZi, Signal Arnaques)"
+
+msgid "Export the fake shops"
+msgstr "가짜 쇼핑몰 내보내기"
+
+msgid "Decision"
+msgstr "결정"
+
+msgid "Since"
+msgstr "일시"
+
+msgid "Computed score"
+msgstr "계산된 점수"
+
+msgid "Worker"
+msgstr "Worker"
+
+msgid "Status"
+msgstr "상태"
+
+msgid "Domains waiting for analysis"
+msgstr "분석 대기 중인 도메인"
+
+msgid "Last collection"
+msgstr "마지막 수집"
+
+msgid "Blocking"
+msgstr "차단"
+
+msgid "Unbound statistics are disabled: enable them in Reporting -> Unbound DNS, Settings tab. ShopGuard reads the domains from there."
+msgstr "Unbound 통계가 비활성화되어 있습니다: 보고서 -> Unbound DNS의 설정 탭에서 활성화하세요. ShopGuard는 그곳에서 도메인을 읽습니다."
+
+msgid "No worker URL configured."
+msgstr "worker URL이 설정되지 않았습니다."
+
+msgid "Search for part of a domain name."
+msgstr "도메인 이름의 일부로 검색하세요."
+
+msgid "Unexpected answer from the worker."
+msgstr "worker의 예기치 않은 응답입니다."
+
+msgid "Set the worker URL and token first."
+msgstr "먼저 worker URL과 토큰을 설정하세요."
+
+msgid "Cannot read the Unbound database: %s"
+msgstr "Unbound 데이터베이스를 읽을 수 없습니다: %s"
+
+msgid "Blocklist not updated, the previous one stays: %s"
+msgstr "차단 목록이 업데이트되지 않아 이전 목록이 유지됩니다: %s"
+
+msgid "The worker refused the token."
+msgstr "worker가 토큰을 거부했습니다."
+
+msgid "The worker is too old for decisions: update it to 0.9 or later."
+msgstr "worker가 너무 오래되어 결정을 지원하지 않습니다: 0.9 이상으로 업데이트하세요."
+
+msgid "Worker error: HTTP %d."
+msgstr "worker 오류: HTTP %d."
+
+msgid "Worker unreachable: %s"
+msgstr "worker에 연결할 수 없음: %s"
+
+msgid "Not a public domain name."
+msgstr "공개 도메인 이름이 아닙니다."
+
+msgid "The decision is fake, legit or none."
+msgstr "결정은 fake, legit 또는 none입니다."
+
+msgid "Cannot read the configuration: %s"
+msgstr "설정을 읽을 수 없습니다: %s"

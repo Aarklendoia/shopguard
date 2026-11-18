@@ -33,7 +33,10 @@ class IndexController extends \OPNsense\Base\IndexController
     public function indexAction()
     {
         $this->view->pick('OPNsense/ShopGuard/index');
-        $this->view->generalForm = $this->getForm('general');
+        $this->view->sgLang = new \OPNsense\ShopGuard\ViewLang();
+        $this->view->generalForm = \OPNsense\ShopGuard\Lang::within(function () {
+            return $this->getForm('general');
+        });
         // offered as a filter of the verdict list
         $threshold = (int)(string)(new \OPNsense\ShopGuard\ShopGuard())->general->threshold;
         $this->view->threshold = ($threshold >= 1 && $threshold <= 100) ? $threshold : 70;

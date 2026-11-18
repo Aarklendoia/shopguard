@@ -70,6 +70,15 @@ jobs:
       - name: Backend tests
         run: python3 -I plugin/tests/test_shopguard.py plugin/dns/shopguard/src/opnsense/scripts/OPNsense/ShopGuard/shopguard.py
 
+      # every string translated in each plugin/dns/shopguard/lang/*.po, same placeholders
+      - name: Translations
+        run: |
+          sudo apt-get install -y -qq gettext >/dev/null
+          python3 -I plugin/lang.py check
+          python3 -I plugin/lang.py build "$RUNNER_TEMP/locale"
+          sudo locale-gen fr_FR.UTF-8 >/dev/null
+          php plugin/tests/test_lang.php "$RUNNER_TEMP/locale"
+
   # FreeBSD package, signed repository and install.sh (several minutes)
   package:
     needs: [changes, lint-test]

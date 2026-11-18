@@ -62,6 +62,12 @@ jobs:
           openssl rsa -in .signing.key -pubout 2>/dev/null | cmp -s - repo.pub \
             || { echo "::error::PKG_SIGNING_KEY does not match the public key in install.sh"; exit 1; }
 
+      # gettext catalogues, installed with the package in /usr/local/share/locale
+      - name: Translations
+        run: |
+          sudo apt-get install -y -qq gettext >/dev/null
+          python3 -I plugin/lang.py build plugin/dns/shopguard/src/share/locale
+
       - name: Build (FreeBSD)
         uses: vmactions/freebsd-vm@811efaaac0668df8bfb8308c3ec997b5ab50037b # v1.6.0
         env:
