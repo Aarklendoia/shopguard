@@ -118,8 +118,17 @@
         }
 
         // the user's decision on a domain: fake (always blocked), legit (never), none
+        // Unbound rebuilds its whole blocklist (tens of seconds with big lists): the decision
+        // buttons wait with a spinner, one decision at a time
+        function deciding(on) {
+            $('.verdict-decide, #decide_fake, #decide_legit').prop('disabled', on);
+            $('#decide_progress, #decide_progress_grid').toggle(on);
+        }
+
         function decide(domain, label) {
+            deciding(true);
             ajaxCall('/api/shopguard/service/feedback', {domain: domain, label: label}, function (data) {
+                deciding(false);
                 if (data.status !== 'ok') {
                     warn(data.message || '{{ lang._('The decision was not saved.') }}');
                 } else if (data.message) {
@@ -313,6 +322,7 @@
             <option value="{{ threshold }}">{{ threshold }} ({{ lang._('blocking threshold') }})</option>
         </select>
         <span id="verdicts_message" class="text-danger" style="margin-left: 1em; display: none;"></span>
+        <span id="decide_progress_grid" style="margin-left: 1em; display: none;"><i class="fa fa-spinner fa-pulse"></i> {{ lang._('Updating the Unbound blocklist…') }}</span>
     </div>
     <table id="grid-verdicts" class="table table-condensed table-hover table-striped">
         <thead>
@@ -335,6 +345,7 @@
             <input type="text" id="decide_domain" class="form-control" placeholder="example-shop.com" style="width: 20em;"/>
             <button type="button" id="decide_fake" class="btn btn-danger"><span class="fa fa-fw fa-thumbs-down"></span> {{ lang._('Fake shop') }}</button>
             <button type="button" id="decide_legit" class="btn btn-success"><span class="fa fa-fw fa-thumbs-up"></span> {{ lang._('Legitimate') }}</button>
+            <span id="decide_progress" style="display: none;"><i class="fa fa-spinner fa-pulse"></i> {{ lang._('Updating the Unbound blocklist…') }}</span>
             <button type="button" id="export_fake" class="btn btn-default pull-right" disabled="disabled"
                     title="{{ lang._('One domain per line, to report them (HaGeZi, Signal Arnaques)') }}">
                 <span class="fa fa-fw fa-download"></span> {{ lang._('Export the fake shops') }}</button>

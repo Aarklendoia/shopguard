@@ -91,6 +91,9 @@ DNSBL_RELOAD = ['/usr/local/sbin/configctl', 'unbound', 'dnsbl']
 UNBOUND_FLUSH = ['/usr/local/sbin/unbound-control', '-c', '/var/unbound/unbound.conf', 'flush_zone']
 # most domains flushed in one run (one unbound-control call each)
 FLUSH_MAX = 500
+# Unbound's blocklist module reads a new list at most once a minute, on a query: the
+# domains are flushed again this long after the reload, in a detached process
+FLUSH_AGAIN_AFTER = 75
 
 
 def settings(path=CONFIG):
@@ -402,13 +405,21 @@ def blocklist(cfg, state_dir=STATE_DIR, reload=None, now=None, flush=None):
 
 
 def flush_unbound(names):
-    """Drops the cached answers of `names` and their subdomains."""
+    """Drops the cached answers of `names` and their subdomains, now and once more when the
+    blocklist module has read the new list (a query in between caches the answer again)."""
     for name in names:
         try:
             subprocess.run(UNBOUND_FLUSH + [name], check=False, timeout=10,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except (OSError, subprocess.SubprocessError):
             return
+    # names are checked public domain names (public_name), passed as arguments, not code
+    script = 'sleep %d; for d in "$@"; do %s "$d"; done' % (FLUSH_AGAIN_AFTER, ' '.join(UNBOUND_FLUSH))
+    try:
+        subprocess.Popen(['/usr/sbin/daemon', '-f', '/bin/sh', '-c', script, 'shopguard-flush'] + list(names),
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        pass
 
 
 def reload_unbound():
