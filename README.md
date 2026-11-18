@@ -21,7 +21,7 @@ it can check right away.
 ```
 
 - **Privacy**: the plugin sends **domain names only**, never client addresses or timestamps.
-  The worker queries public services about those domains (RDAP registries, Certificate
+  The worker queries public services about those domains (RDAP registries, and the WHOIS of a few registries without RDAP on port 43, Certificate
   Transparency logs through crt.sh and Cert Spotter, the Internet Archive's Wayback Machine, the French
   company directory, the EU VAT number check VIES) and fetches the sites themselves, from the Docker host. The hosting network is looked up by IP address only (Team Cymru DNS),
   and the DROP lists of criminal networks and the current Firefox version (for the
@@ -56,11 +56,12 @@ worker/                          shopguard-worker (Rust)
   src/measure.rs                 `measure`: scores of the corpus as tables for pull requests
   src/netguard.rs                which addresses the worker may connect to (SSRF guard)
   src/page.rs                    analyzer: home page, does it look like a shop?
-  src/rdap.rs                    analyzer: domain registration age (RDAP)
+  src/rdap.rs                    analyzer: domain registration age (RDAP, WHOIS fallback)
   src/shop.rs                    analyzer: shop heuristics (fake shop kit, discounts, copied catalogue)
   src/siret.rs                   SIREN/SIRET validation
   src/tls.rs                     analyzer: certificate presented on port 443
   src/vies.rs                    EU VAT numbers checked in VIES
+  src/whois.rs                   registration date from the WHOIS of TLDs without RDAP
   Dockerfile                     local build
   Dockerfile.release             release image (static binaries built by CI)
 plugin/dns/shopguard/            os-shopguard OPNsense plugin
@@ -168,7 +169,7 @@ above 0 and the fakes under the threshold, and every score that changed. Fake sh
 within weeks: add recent ones to `fake.txt` (and drop the ones that stop answering) before
 measuring. The network answers (crt.sh, registries) vary between runs: compare scores
 whose signals changed, not the noise. A run takes hours rather than minutes: the free
-services (crt.sh, Cert Spotter, RDAP servers, VIES) are queried one request at a time and
+services (crt.sh, Cert Spotter, RDAP and WHOIS servers, VIES) are queried one request at a time and
 spaced, whatever `--jobs` says, which only parallelizes the rest (pages, certificates).
 
 ## Plugin

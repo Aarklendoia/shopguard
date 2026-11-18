@@ -4,6 +4,9 @@
 //! A fake shop usually runs on a domain registered a few days or weeks earlier, often a
 //! recycled one bought back after it expired: its registration date is then recent too.
 //! Registrant data is not used: GDPR redaction is the norm in Europe.
+//!
+//! The TLDs without RDAP whose registry WHOIS gives a creation date (`.io`, `.me`, `.co`…)
+//! are asked through [`crate::whois`] instead; the signals are the same.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -15,6 +18,7 @@ use tracing::debug;
 
 use crate::analysis::{Analyzer, BoxFuture, Signal};
 use crate::http;
+use crate::whois;
 
 pub const BOOTSTRAP_URL: &str = "https://data.iana.org/rdap/dns.json";
 const BOOTSTRAP_TTL: Duration = Duration::from_secs(24 * 3600);
@@ -26,6 +30,9 @@ const CACHE_MAX: usize = 20_000;
 const MAX_WAIT: Duration = Duration::from_secs(30);
 const DEFAULT_BACKOFF: Duration = Duration::from_secs(300);
 const MAX_BACKOFF: Duration = Duration::from_secs(3600);
+/// WHOIS servers throttle per IP address: at least this long between two queries to one
+/// server.
+const WHOIS_SPACING: Duration = Duration::from_secs(2);
 
 /// Weights by registration age, first match wins. To tune with the feedback of #12.
 const AGE_WEIGHTS: &[(u64, i32)] = &[
@@ -102,6 +109,22 @@ enum Lookup {
         reregistered: Option<u64>,
     },
     NotFound,
+}
+
+/// Where the answer comes from.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Via {
+    Rdap,
+    Whois,
+}
+
+impl Via {
+    fn label(self) -> &'static str {
+        match self {
+            Via::Rdap => "RDAP",
+            Via::Whois => "WHOIS",
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -196,13 +219,13 @@ pub fn registered_day(signals: &[Signal]) -> Option<u64> {
     epoch_days(date.strip_suffix(')')?)
 }
 
-fn signals(lookup: &Lookup, today: u64) -> Vec<Signal> {
+fn signals(lookup: &Lookup, via: Via, today: u64) -> Vec<Signal> {
     let (registered, reregistered) = match lookup {
         Lookup::NotFound => {
             return vec![signal(
                 "domain_not_found",
                 0,
-                "not found in the registry RDAP".into(),
+                format!("not found in the registry {}", via.label()),
             )];
         }
         Lookup::Found {
@@ -215,7 +238,7 @@ fn signals(lookup: &Lookup, today: u64) -> Vec<Signal> {
         None => out.push(signal(
             "domain_age_unknown",
             0,
-            "no registration date in RDAP".into(),
+            format!("no registration date in {}", via.label()),
         )),
         Some(r) => {
             let age = today.saturating_sub(r);
@@ -227,7 +250,10 @@ fn signals(lookup: &Lookup, today: u64) -> Vec<Signal> {
             out.push(signal(
                 "domain_age_days",
                 weight,
-                format!("registered {age} days ago ({})", date(r)),
+                match via {
+                    Via::Rdap => format!("registered {age} days ago ({})", date(r)),
+                    Via::Whois => format!("registered {age} days ago, per WHOIS ({})", date(r)),
+                },
             ));
         }
     }
@@ -258,9 +284,12 @@ fn retry_after(resp: &reqwest::Response) -> Duration {
 #[derive(Default)]
 struct State {
     bootstrap: Option<(Instant, Bootstrap)>,
-    cache: HashMap<String, (Instant, Lookup)>,
-    /// RDAP host → no request before this instant (after a 429).
+    cache: HashMap<String, (Instant, Lookup, Via)>,
+    /// RDAP or WHOIS host → no request before this instant (after a 429 or a WHOIS
+    /// refusal).
     backoff: HashMap<String, Instant>,
+    /// WHOIS host → time of its last query.
+    whois_last: HashMap<&'static str, Instant>,
 }
 
 pub struct Rdap {
@@ -318,21 +347,23 @@ impl Rdap {
         Bootstrap::parse(&body)
     }
 
-    async fn lookup(&self, domain: &str) -> Result<Lookup, Failure> {
+    async fn lookup(&self, domain: &str) -> Result<(Lookup, Via), Failure> {
         let mut state = self.state.lock().await;
-        if let Some((at, l)) = state.cache.get(domain)
+        if let Some((at, l, via)) = state.cache.get(domain)
             && at.elapsed() < CACHE_TTL
         {
-            return Ok(l.clone());
+            return Ok((l.clone(), *via));
         }
-        let base = self.server(&mut state, domain).await?;
+        let base = match self.server(&mut state, domain).await {
+            Ok(base) => base,
+            Err(Failure::NoServer(tld)) => match whois::server(domain) {
+                Some(host) => return Self::whois(&mut state, host, domain).await,
+                None => return Err(Failure::NoServer(tld)),
+            },
+            Err(e) => return Err(e),
+        };
         let host = base.host_str().unwrap_or_default().to_owned();
-        if let Some(until) = state.backoff.get(&host) {
-            if Instant::now() < *until {
-                return Err(Failure::RateLimited(host));
-            }
-            state.backoff.remove(&host);
-        }
+        check_backoff(&mut state, &host)?;
         let url = base
             .join(&format!("domain/{domain}"))
             .map_err(|e| Failure::Error(e.to_string()))?;
@@ -370,17 +401,64 @@ impl Rdap {
             }
             s => return Err(Failure::Error(format!("{host}: HTTP {s}"))),
         };
-        if state.cache.len() >= CACHE_MAX {
-            state.cache.retain(|_, (at, _)| at.elapsed() < CACHE_TTL);
-            if state.cache.len() >= CACHE_MAX {
-                state.cache.clear();
+        Ok(remember(&mut state, domain, lookup, Via::Rdap))
+    }
+
+    /// Registry WHOIS of `host`, for a TLD without RDAP. A refusal or a failure keeps the
+    /// server aside for a while: these servers block the IP addresses that insist.
+    async fn whois(
+        state: &mut State,
+        host: &'static str,
+        domain: &str,
+    ) -> Result<(Lookup, Via), Failure> {
+        check_backoff(state, host)?;
+        if let Some(last) = state.whois_last.get(host) {
+            let wait = WHOIS_SPACING.saturating_sub(last.elapsed());
+            if !wait.is_zero() {
+                tokio::time::sleep(wait).await;
             }
         }
-        state
-            .cache
-            .insert(domain.to_owned(), (Instant::now(), lookup.clone()));
-        Ok(lookup)
+        let answer = whois::query(host, domain).await;
+        state.whois_last.insert(host, Instant::now());
+        let lookup = match answer {
+            Ok(whois::Answer::Created(day)) => Lookup::Found {
+                registered: Some(day),
+                reregistered: None,
+            },
+            Ok(whois::Answer::NotFound) => Lookup::NotFound,
+            Err(e) => {
+                state
+                    .backoff
+                    .insert(host.to_owned(), Instant::now() + DEFAULT_BACKOFF);
+                return Err(Failure::Error(format!("{host}: {e}")));
+            }
+        };
+        Ok(remember(state, domain, lookup, Via::Whois))
     }
+}
+
+/// Fails with [`Failure::RateLimited`] while `host` is kept aside.
+fn check_backoff(state: &mut State, host: &str) -> Result<(), Failure> {
+    if let Some(until) = state.backoff.get(host) {
+        if Instant::now() < *until {
+            return Err(Failure::RateLimited(host.to_owned()));
+        }
+        state.backoff.remove(host);
+    }
+    Ok(())
+}
+
+fn remember(state: &mut State, domain: &str, lookup: Lookup, via: Via) -> (Lookup, Via) {
+    if state.cache.len() >= CACHE_MAX {
+        state.cache.retain(|_, (at, _, _)| at.elapsed() < CACHE_TTL);
+        if state.cache.len() >= CACHE_MAX {
+            state.cache.clear();
+        }
+    }
+    state
+        .cache
+        .insert(domain.to_owned(), (Instant::now(), lookup.clone(), via));
+    (lookup, via)
 }
 
 /// True when the registrable domain sits under a private suffix of the PSL
@@ -400,7 +478,7 @@ impl Analyzer for Rdap {
                 return Vec::new();
             }
             match self.lookup(domain).await {
-                Ok(l) => signals(&l, today()),
+                Ok((l, via)) => signals(&l, via, today()),
                 Err(Failure::NoServer(tld)) => vec![signal(
                     "rdap_unavailable",
                     0,
@@ -412,8 +490,12 @@ impl Analyzer for Rdap {
                     format!("{host} rate-limits requests, try later"),
                 )],
                 Err(Failure::Error(e)) => {
-                    debug!(%domain, "RDAP lookup failed: {e}");
-                    vec![signal("rdap_error", 0, format!("RDAP lookup failed: {e}"))]
+                    debug!(%domain, "registry lookup failed: {e}");
+                    vec![signal(
+                        "rdap_error",
+                        0,
+                        format!("registry lookup failed: {e}"),
+                    )]
                 }
             }
         })
@@ -506,7 +588,7 @@ mod tests {
     }
 
     fn weights(l: &Lookup, today: u64) -> Vec<(String, i32)> {
-        signals(l, today)
+        signals(l, Via::Rdap, today)
             .into_iter()
             .map(|s| (s.name, s.weight))
             .collect()
@@ -554,8 +636,11 @@ mod tests {
             registered: Some(t - 45),
             reregistered: None,
         };
-        assert_eq!(registered_day(&signals(&l, t)), Some(t - 45));
-        assert_eq!(registered_day(&signals(&Lookup::NotFound, t)), None);
+        assert_eq!(registered_day(&signals(&l, Via::Rdap, t)), Some(t - 45));
+        assert_eq!(
+            registered_day(&signals(&Lookup::NotFound, Via::Rdap, t)),
+            None
+        );
         let other = Signal {
             source: "tls".into(),
             name: "domain_age_days".into(),
@@ -563,6 +648,24 @@ mod tests {
             detail: "registered 3 days ago (2026-01-01)".into(),
         };
         assert_eq!(registered_day(&[other]), None);
+    }
+
+    #[test]
+    fn whois_answers_name_their_source() {
+        let t = 20_000;
+        let l = Lookup::Found {
+            registered: Some(t - 12),
+            reregistered: None,
+        };
+        let s = signals(&l, Via::Whois, t);
+        assert_eq!((s[0].name.as_str(), s[0].weight), ("domain_age_days", 40));
+        assert!(s[0].detail.contains("per WHOIS"), "{}", s[0].detail);
+        // history reads the date back whatever the source
+        assert_eq!(registered_day(&s), Some(t - 12));
+        assert_eq!(
+            signals(&Lookup::NotFound, Via::Whois, t)[0].detail,
+            "not found in the registry WHOIS"
+        );
     }
 
     #[test]
