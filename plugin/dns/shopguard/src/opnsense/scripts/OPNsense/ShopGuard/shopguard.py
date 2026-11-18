@@ -28,7 +28,10 @@
     ShopGuard backend, called by configd (actions_shopguard.conf).
 
         shopguard.py status     worker reachability and last collection, as JSON
-        shopguard.py collect    send the worker the new domains resolved by Unbound (cron)
+        shopguard.py collect    send the worker the new domains resolved by Unbound
+        shopguard.py blocklist  in Block mode, the domains scoring at least the threshold
+                                for Unbound (blocklist.json, read by shopguard_bl.py)
+        shopguard.py update     collect, then blocklist (cron, every 5 minutes)
         shopguard.py verdicts <min_score> <offset> <limit> [search]
                                 one page of verdicts, highest score first, as JSON
 
@@ -44,6 +47,7 @@ import ipaddress
 import json
 import os
 import re
+import subprocess
 import sys
 import syslog
 import time
@@ -73,6 +77,11 @@ LABEL = re.compile(r'^[a-z0-9_]([a-z0-9_-]{0,61}[a-z0-9_])?$')
 # search in the verdict list: part of a domain name
 SEARCH = re.compile(r'^[a-z0-9_.-]{0,253}$')
 MAX_PAGE = 1000
+# read by the Unbound blocklist handler (scripts/unbound/blocklists/shopguard_bl.py)
+BLOCKLIST = 'blocklist.json'
+# most domains blocked: a broken or hostile worker cannot inflate Unbound's memory
+BLOCK_MAX = 100000
+DNSBL_RELOAD = ['/usr/local/sbin/configctl', 'unbound', 'dnsbl']
 
 
 def settings(path=CONFIG):
@@ -207,7 +216,7 @@ def verdicts(cfg, min_score=0, offset=0, limit=50, search=''):
         rows = [r for r in rows if search in str(r.get('domain', '')) and int(r.get('score', 0)) >= min_score]
         total = len(rows)
         rows = rows[offset:offset + limit]
-    keep = ('domain', 'score', 'checked_at', 'signals')
+    keep = ('domain', 'score', 'checked_at', 'signals', 'feedback')
     return {'status': 'ok', 'total': int(total), 'rows': [{k: r.get(k) for k in keep} for r in rows]}
 
 
@@ -305,14 +314,91 @@ def _collect(cfg, source, state_dir, local, now):
     return finish(result)
 
 
+def effective_score(row):
+    """The user's feedback (worker 0.9+) overrides the computed score."""
+    label = (row.get('feedback') or {}).get('label') if isinstance(row.get('feedback'), dict) else None
+    if label == 'fake':
+        return 100
+    if label == 'legit':
+        return 0
+    try:
+        return int(row.get('score', 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def blocked_domains(cfg):
+    """Domains to block: verdicts scoring at least the threshold, as a sorted list.
+
+    Raises OSError (or URLError) when the worker does not answer in full: the previous list
+    is kept rather than unblocking everything.
+    """
+    domains = set()
+    offset = 0
+    while True:
+        page = verdicts(cfg, cfg['threshold'], offset, MAX_PAGE)
+        if page['status'] != 'ok':
+            raise OSError(page['message'])
+        for r in page['rows']:
+            name = public_name(str(r.get('domain', '')))
+            if name and effective_score(r) >= cfg['threshold']:
+                domains.add(name)
+        offset += len(page['rows'])
+        if not page['rows'] or offset >= page['total'] or len(domains) >= BLOCK_MAX:
+            break
+    return sorted(domains)[:BLOCK_MAX]
+
+
+def blocklist(cfg, state_dir=STATE_DIR, reload=None, now=None):
+    """Writes the domains Unbound must block and reloads its blocklists when they changed.
+
+    Observe mode, or ShopGuard disabled: the list is emptied (nothing blocked).
+    """
+    now = int(now if now is not None else time.time())
+    os.makedirs(state_dir, mode=0o700, exist_ok=True)
+    path = os.path.join(state_dir, BLOCKLIST)
+    old = load_json(path, {})
+    blocking = cfg['enabled'] and cfg['mode'] == 'block'
+    if not blocking:
+        domains = []
+    else:
+        if not cfg['worker_url'] or not cfg['token']:
+            return {'status': 'error', 'message': 'Set the worker URL and token first.'}
+        try:
+            domains = blocked_domains(cfg)
+        except (OSError, ValueError) as e:
+            message = 'Blocklist not updated, the previous one stays: %s' % getattr(e, 'reason', e)
+            syslog.syslog(syslog.LOG_ERR, 'shopguard blocklist: %s' % message)
+            return {'status': 'error', 'message': message, 'blocked': len(old.get('domains', []))}
+    changed = domains != old.get('domains', [])
+    if changed or not os.path.exists(path):
+        # read by Unbound's blocklist script, which runs as root like this one
+        save_json(path, {'domains': domains, 'threshold': cfg['threshold'], 'time': now})
+    if changed:
+        (reload or reload_unbound)()
+        syslog.syslog(syslog.LOG_NOTICE, 'shopguard blocklist: %d domains blocked' % len(domains))
+    return {'status': 'ok', 'blocked': len(domains), 'changed': changed,
+            'mode': 'block' if blocking else 'observe'}
+
+
+def reload_unbound():
+    """Unbound rebuilds its blocklists from all sources, ShopGuard's included."""
+    subprocess.run(DNSBL_RELOAD, check=False, timeout=600,
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def blocked_count(state_dir=STATE_DIR):
+    return len(load_json(os.path.join(state_dir, BLOCKLIST), {}).get('domains', []))
+
+
 def last_collect(state_dir=STATE_DIR):
     return load_json(os.path.join(state_dir, 'state.json'), {}).get('last')
 
 
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else ''
-    if cmd not in ('status', 'collect', 'verdicts'):
-        print('usage: shopguard.py status|collect|verdicts', file=sys.stderr)
+    if cmd not in ('status', 'collect', 'blocklist', 'update', 'verdicts'):
+        print('usage: shopguard.py status|collect|blocklist|update|verdicts', file=sys.stderr)
         return 2
     try:
         cfg = settings()
@@ -334,9 +420,20 @@ def main(argv):
     if cmd == 'status':
         out = status(cfg)
         out['collect'] = last_collect()
+        out['mode'] = cfg['mode'] if cfg['enabled'] else 'disabled'
+        out['blocked'] = blocked_count()
         print(json.dumps(out))
         return 0
+    if cmd == 'blocklist':
+        out = blocklist(cfg)
+        print(json.dumps(out))
+        return 0 if out['status'] == 'ok' else 1
     out = collect(cfg, local=local_domain())
+    if cmd == 'update':
+        out = {'collect': out, 'blocklist': blocklist(cfg)}
+        print(json.dumps(out))
+        return 0 if out['blocklist']['status'] == 'ok' and \
+            out['collect']['status'] in ('ok', 'disabled', 'busy') else 1
     print(json.dumps(out))
     return 0 if out['status'] in ('ok', 'disabled', 'busy') else 1
 

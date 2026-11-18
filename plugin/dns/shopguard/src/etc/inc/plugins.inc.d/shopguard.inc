@@ -33,14 +33,15 @@ function shopguard_enabled()
 }
 
 /**
- * Collect the new domains resolved by Unbound every 5 minutes, only when enabled.
+ * Every 5 minutes, only when enabled: send the new domains resolved by Unbound, then
+ * update the domains blocked in Block mode.
  */
 function shopguard_cron()
 {
     $jobs = [];
 
     if (shopguard_enabled()) {
-        $jobs[]['autocron'] = ['/usr/local/sbin/configctl -d shopguard collect', '*/5'];
+        $jobs[]['autocron'] = ['/usr/local/sbin/configctl -d shopguard update', '*/5'];
     }
 
     return $jobs;
