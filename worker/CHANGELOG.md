@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.9.0](https://github.com/Aarklendoia/shopguard/compare/worker-v0.8.0...worker-v0.9.0) (2026-11-18)
+
+
+### Features
+
+* **worker:** feedback overrides the score ([#63](https://github.com/Aarklendoia/shopguard/issues/63)) ([ad7caaa](https://github.com/Aarklendoia/shopguard/commit/ad7caaa5c346e47dd09e8cbe1f9faccb3b23c610))
+* **worker:** German shops without register number or VAT ID ([#66](https://github.com/Aarklendoia/shopguard/issues/66)) ([ac5a8e9](https://github.com/Aarklendoia/shopguard/commit/ac5a8e9576da170843caf786202ce531bd35f943)), closes [#60](https://github.com/Aarklendoia/shopguard/issues/60)
+* **worker:** measurement corpus, measure command, parallel check ([#64](https://github.com/Aarklendoia/shopguard/issues/64)) ([e0fb668](https://github.com/Aarklendoia/shopguard/commit/e0fb66870d8d83fa92473af1a5db0a4545dc881d))
+
 ## [0.8.0](https://github.com/Aarklendoia/shopguard/compare/worker-v0.7.0...worker-v0.8.0) (2026-11-17)
 
 
