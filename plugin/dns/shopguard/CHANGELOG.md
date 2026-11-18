@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.4](https://github.com/Aarklendoia/shopguard/compare/plugin-v0.4.3...plugin-v0.4.4) (2026-11-18)
+
+
+### Bug Fixes
+
+* **plugin:** decisions answer at once, Actions column, spinner on the clicked button ([#74](https://github.com/Aarklendoia/shopguard/issues/74)) ([ed02f66](https://github.com/Aarklendoia/shopguard/commit/ed02f662e894cf7ad93cc8e9af40358c5a2cda15))
+
 ## [0.4.3](https://github.com/Aarklendoia/shopguard/compare/plugin-v0.4.2...plugin-v0.4.3) (2026-11-18)
 
 
