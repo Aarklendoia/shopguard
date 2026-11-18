@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/Aarklendoia/shopguard/compare/plugin-v0.3.0...plugin-v0.4.0) (2026-11-18)
+
+
+### Features
+
+* **plugin:** block suspicious domains in Unbound ([#62](https://github.com/Aarklendoia/shopguard/issues/62)) ([5b1a46f](https://github.com/Aarklendoia/shopguard/commit/5b1a46ff5d84b4100fe9dd052c58cc8606a3c1da))
+* **plugin:** decisions on verdicts, allow and deny lists ([#67](https://github.com/Aarklendoia/shopguard/issues/67)) ([ee00d8a](https://github.com/Aarklendoia/shopguard/commit/ee00d8a5ec77cc88aebfb667d7dc42a68d973651)), closes [#12](https://github.com/Aarklendoia/shopguard/issues/12)
+
 ## [0.3.0](https://github.com/Aarklendoia/shopguard/compare/plugin-v0.2.1...plugin-v0.3.0) (2026-11-13)
 
 
