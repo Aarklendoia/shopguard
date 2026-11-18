@@ -213,17 +213,17 @@
 
         function buttons(row) {
             var id = ' data-row-id="' + esc(row.domain) + '"';
-            var out = '<button type="button" class="btn btn-xs btn-default verdict-details"' + id +
+            var out = '<button type="button" class="btn btn-xs btn-default bootgrid-tooltip verdict-details"' + id +
                 ' title="{{ lang._('Signals') }}"><span class="fa fa-fw fa-info-circle"></span></button> ';
             if (row.feedback) {
-                return out + '<button type="button" class="btn btn-xs btn-default verdict-decide"' + id +
+                return out + '<button type="button" class="btn btn-xs btn-default bootgrid-tooltip verdict-decide"' + id +
                     ' data-label="none" title="{{ lang._('Forget the decision') }}"><span class="fa fa-fw fa-undo"></span></button>';
             }
             return out +
-                '<button type="button" class="btn btn-xs btn-default verdict-decide"' + id +
-                ' data-label="legit" title="{{ lang._('Legitimate: never block') }}"><span class="fa fa-fw fa-thumbs-up"></span></button> ' +
-                '<button type="button" class="btn btn-xs btn-default verdict-decide"' + id +
-                ' data-label="fake" title="{{ lang._('Fake shop: always block') }}"><span class="fa fa-fw fa-thumbs-down"></span></button>';
+                '<button type="button" class="btn btn-xs btn-default bootgrid-tooltip verdict-decide"' + id +
+                ' data-label="legit" title="{{ lang._('Legitimate: never block') }}"><span class="fa fa-fw fa-check"></span></button> ' +
+                '<button type="button" class="btn btn-xs btn-default bootgrid-tooltip verdict-decide"' + id +
+                ' data-label="fake" title="{{ lang._('Fake shop: always block') }}"><span class="fa fa-fw fa-ban"></span></button>';
         }
 
         function scoreClass(score) {
@@ -365,8 +365,8 @@
         <p>{{ lang._('Your decisions override the score: a domain marked fake is always blocked (in Block mode), one marked legitimate never is. They are kept by the worker, which also uses them to improve its scoring.') }}</p>
         <div class="form-inline">
             <input type="text" id="decide_domain" class="form-control" placeholder="example-shop.com" style="width: 20em;"/>
-            <button type="button" id="decide_fake" class="btn btn-danger"><span class="fa fa-fw fa-thumbs-down"></span> {{ lang._('Fake shop') }}</button>
-            <button type="button" id="decide_legit" class="btn btn-success"><span class="fa fa-fw fa-thumbs-up"></span> {{ lang._('Legitimate') }}</button>
+            <button type="button" id="decide_fake" class="btn btn-danger"><span class="fa fa-fw fa-ban"></span> {{ lang._('Fake shop') }}</button>
+            <button type="button" id="decide_legit" class="btn btn-success"><span class="fa fa-fw fa-check"></span> {{ lang._('Legitimate') }}</button>
             <span id="decide_progress" style="display: none;"><i class="fa fa-spinner fa-pulse"></i> {{ lang._('Saving…') }}</span>
             <span id="decide_info" class="text-success" style="display: none;"></span>
             <button type="button" id="export_fake" class="btn btn-default pull-right" disabled="disabled"
