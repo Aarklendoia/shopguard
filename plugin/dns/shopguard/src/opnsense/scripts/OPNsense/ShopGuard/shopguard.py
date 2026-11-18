@@ -86,6 +86,11 @@ BLOCKLIST = 'blocklist.json'
 # most domains blocked: a broken or hostile worker cannot inflate Unbound's memory
 BLOCK_MAX = 100000
 DNSBL_RELOAD = ['/usr/local/sbin/configctl', 'unbound', 'dnsbl']
+# Unbound answers from its cache without asking the blocklist module: the cached answers of
+# a domain newly blocked (or unblocked) are flushed, with its subdomains
+UNBOUND_FLUSH = ['/usr/local/sbin/unbound-control', '-c', '/var/unbound/unbound.conf', 'flush_zone']
+# most domains flushed in one run (one unbound-control call each)
+FLUSH_MAX = 500
 
 
 def settings(path=CONFIG):
@@ -353,10 +358,14 @@ def blocked_domains(cfg):
     return sorted(domains)[:BLOCK_MAX]
 
 
-def blocklist(cfg, state_dir=STATE_DIR, reload=None, now=None):
+def blocklist(cfg, state_dir=STATE_DIR, reload=None, now=None, flush=None):
     """Writes the domains Unbound must block and reloads its blocklists when they changed.
 
     Observe mode, or ShopGuard disabled: the list is emptied (nothing blocked).
+
+    The domains added or removed are flushed from Unbound's cache, and once more on the next
+    run: the blocklist module reads the new list up to a minute later, and a query in
+    between would cache the answer again.
     """
     now = int(now if now is not None else time.time())
     os.makedirs(state_dir, mode=0o700, exist_ok=True)
@@ -374,15 +383,32 @@ def blocklist(cfg, state_dir=STATE_DIR, reload=None, now=None):
             message = 'Blocklist not updated, the previous one stays: %s' % getattr(e, 'reason', e)
             syslog.syslog(syslog.LOG_ERR, 'shopguard blocklist: %s' % message)
             return {'status': 'error', 'message': message, 'blocked': len(old.get('domains', []))}
-    changed = domains != old.get('domains', [])
-    if changed or not os.path.exists(path):
+    previous = old.get('domains', [])
+    changed = domains != previous
+    diff = sorted(set(domains) ^ set(previous))
+    again = [d for d in old.get('flush', []) if isinstance(d, str)]
+    if changed or again or not os.path.exists(path):
         # read by Unbound's blocklist script, which runs as root like this one
-        save_json(path, {'domains': domains, 'threshold': cfg['threshold'], 'time': now})
+        save_json(path, {'domains': domains, 'threshold': cfg['threshold'], 'time': now,
+                         'flush': diff[:FLUSH_MAX]})
     if changed:
         (reload or reload_unbound)()
         syslog.syslog(syslog.LOG_NOTICE, 'shopguard blocklist: %d domains blocked' % len(domains))
+    to_flush = sorted(set(diff) | set(again))[:FLUSH_MAX]
+    if to_flush:
+        (flush or flush_unbound)(to_flush)
     return {'status': 'ok', 'blocked': len(domains), 'changed': changed,
-            'mode': 'block' if blocking else 'observe'}
+            'mode': 'block' if blocking else ('observe' if cfg['enabled'] else 'disabled')}
+
+
+def flush_unbound(names):
+    """Drops the cached answers of `names` and their subdomains."""
+    for name in names:
+        try:
+            subprocess.run(UNBOUND_FLUSH + [name], check=False, timeout=10,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except (OSError, subprocess.SubprocessError):
+            return
 
 
 def reload_unbound():
@@ -405,7 +431,7 @@ def worker_error(e):
     return 'Worker unreachable: %s' % getattr(e, 'reason', e)
 
 
-def feedback(cfg, domain, label, state_dir=STATE_DIR, reload=None):
+def feedback(cfg, domain, label, state_dir=STATE_DIR, reload=None, flush=None):
     """Sends the user's decision on `domain` (fake, legit, or none to forget it), then
     updates the blocklist so that it applies at once."""
     name = public_name(domain)
@@ -423,7 +449,7 @@ def feedback(cfg, domain, label, state_dir=STATE_DIR, reload=None):
         return {'status': 'error', 'message': worker_error(e)}
     except (urllib.error.URLError, OSError, ValueError) as e:
         return {'status': 'error', 'message': worker_error(e)}
-    b = blocklist(cfg, state_dir, reload) if cfg['enabled'] else {'status': 'ok', 'blocked': 0}
+    b = blocklist(cfg, state_dir, reload, flush=flush) if cfg['enabled'] else {'status': 'ok', 'blocked': 0}
     out = {'status': 'ok', 'domain': r.get('domain', name), 'label': r.get('label'),
            'queued': bool(r.get('queued')), 'blocked': b.get('blocked', 0)}
     if b['status'] != 'ok':

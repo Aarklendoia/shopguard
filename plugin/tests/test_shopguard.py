@@ -274,12 +274,13 @@ class Blocklist(unittest.TestCase):
         self.state = tempfile.mkdtemp()
         self.cfg = {'enabled': True, 'worker_url': self.url, 'token': TOKEN, 'mode': 'block', 'threshold': 80}
         self.reloads = 0
+        self.flushed = []
 
     def reload(self):
         self.reloads += 1
 
     def run_blocklist(self):
-        return sg.blocklist(self.cfg, self.state, reload=self.reload, now=1000)
+        return sg.blocklist(self.cfg, self.state, reload=self.reload, now=1000, flush=self.flushed.append)
 
     def written(self):
         return sg.load_json(os.path.join(self.state, sg.BLOCKLIST), {}).get('domains')
@@ -298,6 +299,20 @@ class Blocklist(unittest.TestCase):
         self.assertEqual(self.written(), ['fake-shop.fr', 'shop.example.com'])
         self.assertEqual(sg.blocked_count(self.state), 2)
 
+    def test_cache_flushed_twice(self):
+        self.run_blocklist()
+        self.assertEqual(self.flushed, [['fake-shop.fr']])
+        # next run: flushed once more (the module may have read the list after a new query)
+        self.run_blocklist()
+        self.assertEqual(self.flushed[-1], ['fake-shop.fr'])
+        # then nothing to flush
+        self.run_blocklist()
+        self.assertEqual(len(self.flushed), 2)
+        # unblocked: flushed too (a cached NXDOMAIN)
+        self.cfg['mode'] = 'observe'
+        self.run_blocklist()
+        self.assertEqual(self.flushed[-1], ['fake-shop.fr'])
+
     def test_feedback_overrides_the_score(self):
         e = sg.effective_score
         self.assertEqual(e({'score': 40, 'feedback': {'label': 'fake', 'at': 1}}), 100)
@@ -314,7 +329,8 @@ class Blocklist(unittest.TestCase):
         self.cfg['mode'] = 'block'
         self.run_blocklist()
         self.cfg['enabled'] = False
-        self.assertEqual(self.run_blocklist()['blocked'], 0)
+        r = self.run_blocklist()
+        self.assertEqual((r['blocked'], r['mode']), (0, 'disabled'))
         # never blocking, nothing to reload
         fresh = tempfile.mkdtemp()
         self.assertFalse(sg.blocklist(self.cfg, fresh, reload=self.reload)['changed'])
@@ -354,25 +370,28 @@ class Decisions(unittest.TestCase):
     def reload(self):
         self.reloads += 1
 
+    def flush(self, names):
+        pass
+
     def test_decide_list_forget(self):
-        r = sg.feedback(self.cfg, 'WWW.Fake.Example.', 'fake', self.state, self.reload)
+        r = sg.feedback(self.cfg, 'WWW.Fake.Example.', 'fake', self.state, self.reload, self.flush)
         self.assertEqual((r['status'], r['domain'], r['label']), ('ok', 'www.fake.example', 'fake'))
         # the blocklist was updated at once
         self.assertEqual(self.reloads, 1)
-        sg.feedback(self.cfg, 'real.fr', 'legit', self.state, self.reload)
+        sg.feedback(self.cfg, 'real.fr', 'legit', self.state, self.reload, self.flush)
         rows = sg.labels(self.cfg)['rows']
         self.assertEqual([(x['domain'], x['label'], x['at']) for x in rows],
                          [('real.fr', 'legit', 7), ('www.fake.example', 'fake', 7)])
-        sg.feedback(self.cfg, 'real.fr', 'none', self.state, self.reload)
+        sg.feedback(self.cfg, 'real.fr', 'none', self.state, self.reload, self.flush)
         self.assertEqual(FakeWorker.labels, {'www.fake.example': 'fake'})
 
     def test_refused(self):
         for domain, label in (('nas.lan', 'fake'), ('a.fr', 'maybe'), ('x.invalid', 'fake')):
-            r = sg.feedback(self.cfg, domain, label, self.state, self.reload)
+            r = sg.feedback(self.cfg, domain, label, self.state, self.reload, self.flush)
             self.assertEqual(r['status'], 'error', domain)
         self.assertEqual(self.reloads, 0)
         self.cfg['token'] = 'x' * 32
-        self.assertIn('token', sg.feedback(self.cfg, 'a.fr', 'fake', self.state, self.reload)['message'])
+        self.assertIn('token', sg.feedback(self.cfg, 'a.fr', 'fake', self.state, self.reload, self.flush)['message'])
         self.assertIn('token', sg.labels(self.cfg)['message'])
         self.cfg['worker_url'] = 'http://127.0.0.1:9'
         self.assertIn('unreachable', sg.labels(self.cfg)['message'])

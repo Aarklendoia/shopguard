@@ -63,19 +63,40 @@
             });
         }
 
+        // Apply: spinner while saving and updating the blocklist, then what was applied
+        function applying(on) {
+            $('#btn_save').prop('disabled', on);
+            $('#frm_general_progress').toggleClass('fa fa-spinner fa-pulse', on);
+        }
+
+        function applied(type, text) {
+            $('#apply_result').removeClass('alert-success alert-warning').addClass('alert-' + type)
+                .text(text).show();
+        }
+
         $('#btn_save').click(function () {
+            $('#apply_result').hide();
+            applying(true);
             saveFormToEndpoint('/api/shopguard/settings/set', 'frm_general', function () {
                 // (re)creates or removes the cron job, applies the mode to the blocklist
                 ajaxCall('/api/shopguard/service/reconfigure', {}, function (data) {
-                    if (data.status !== 'ok' && data.message) {
-                        BootstrapDialog.show({
-                            type: BootstrapDialog.TYPE_WARNING,
-                            title: '{{ lang._('Blocklist') }}',
-                            message: $('<div/>').text(data.message)
-                        });
+                    applying(false);
+                    if (data.status !== 'ok') {
+                        applied('warning', '{{ lang._('Settings saved, but:') }} ' +
+                            (data.message || '{{ lang._('the blocklist could not be updated.') }}'));
+                    } else if (data.mode === 'block') {
+                        applied('success', '{{ lang._('Settings applied:') }} ' + data.blocked +
+                            ' {{ lang._('domains blocked in Unbound.') }}');
+                    } else if (data.mode === 'observe') {
+                        applied('success', '{{ lang._('Settings applied: observe only, nothing is blocked.') }}');
+                    } else {
+                        applied('success', '{{ lang._('Settings applied: ShopGuard is disabled.') }}');
                     }
                     refreshStatus();
                 });
+            }, false, function () {
+                // invalid fields: shown on the form
+                applying(false);
             });
         });
 
@@ -188,9 +209,11 @@
                     return response;
                 },
                 formatters: {
+                    domain: function (column, row) {
+                        return esc(row.domain) + decisionBadge(row.feedback);
+                    },
                     score: function (column, row) {
-                        return '<span class="label label-' + scoreClass(row.score) + '">' + esc(row.score) + '</span>' +
-                            decisionBadge(row.feedback);
+                        return '<span class="label label-' + scoreClass(row.score) + '">' + esc(row.score) + '</span>';
                     },
                     checked: function (column, row) {
                         return row.checked_at ? esc(new Date(row.checked_at * 1000).toLocaleString()) : '';
@@ -225,20 +248,37 @@
                 var domain = $(this).data('row-id');
                 var row = rows.filter(function (r) { return r.domain === domain; })[0];
                 if (!row) return;
-                var table = $('<table class="table table-condensed"/>');
-                $('<tr/>')
-                    .append($('<th/>').text('{{ lang._('Analyzer') }}'))
-                    .append($('<th/>').text('{{ lang._('Signal') }}'))
-                    .append($('<th/>').text('{{ lang._('Weight') }}'))
+                // thead/tbody: Bootstrap styles the cells only inside them
+                var table = $('<table class="table table-condensed table-striped"/>');
+                $('<thead/>').append($('<tr/>')
+                    .append($('<th style="width: 5em; text-align: right;"/>').text('{{ lang._('Weight') }}'))
+                    .append($('<th style="width: 1%; white-space: nowrap;"/>').text('{{ lang._('Signal') }}'))
                     .append($('<th/>').text('{{ lang._('Detail') }}'))
-                    .appendTo(table);
-                (row.signals || []).forEach(function (s) {
-                    $('<tr/>')
-                        .append($('<td/>').text(s.source))
-                        .append($('<td/>').text(s.name))
-                        .append($('<td/>').text((s.weight > 0 ? '+' : '') + s.weight))
+                ).appendTo(table);
+                var body = $('<tbody/>').appendTo(table);
+                // what makes the score first, the record (weight 0) after, greyed
+                var signals = (row.signals || []).slice().sort(function (a, b) {
+                    return (b.weight !== 0) - (a.weight !== 0) || b.weight - a.weight;
+                });
+                signals.forEach(function (s) {
+                    var weight = $('<td style="text-align: right; white-space: nowrap;"/>');
+                    if (s.weight > 0) {
+                        weight.append($('<span class="label label-danger"/>').text('+' + s.weight));
+                    } else if (s.weight < 0) {
+                        weight.append($('<span class="label label-success"/>').text(s.weight));
+                    } else {
+                        weight.text('0');
+                    }
+                    var tr = $('<tr/>')
+                        .append(weight)
+                        .append($('<td style="white-space: nowrap;"/>')
+                            .append($('<div/>').text(s.name))
+                            .append($('<small class="text-muted"/>').text(s.source)))
                         .append($('<td/>').text(s.detail))
-                        .appendTo(table);
+                        .appendTo(body);
+                    if (s.weight === 0) {
+                        tr.addClass('text-muted');
+                    }
                 });
                 BootstrapDialog.show({
                     title: $('<span/>').text(row.domain + ' — {{ lang._('score') }} ' + row.score),
@@ -277,11 +317,11 @@
     <table id="grid-verdicts" class="table table-condensed table-hover table-striped">
         <thead>
             <tr>
-                <th data-column-id="domain" data-type="string" data-identifier="true">{{ lang._('Domain') }}</th>
-                <th data-column-id="score" data-type="numeric" data-width="6em" data-formatter="score">{{ lang._('Score') }}</th>
+                <th data-column-id="domain" data-type="string" data-identifier="true" data-formatter="domain">{{ lang._('Domain') }}</th>
+                <th data-column-id="score" data-type="numeric" data-width="80" data-formatter="score">{{ lang._('Score') }}</th>
                 <th data-column-id="signals" data-formatter="signals">{{ lang._('Signals') }}</th>
-                <th data-column-id="checked_at" data-width="12em" data-formatter="checked">{{ lang._('Last check') }}</th>
-                <th data-column-id="details" data-width="8em" data-formatter="details" data-sortable="false"></th>
+                <th data-column-id="checked_at" data-width="170" data-formatter="checked">{{ lang._('Last check') }}</th>
+                <th data-column-id="details" data-width="120" data-formatter="details" data-sortable="false"></th>
             </tr>
         </thead>
         <tbody></tbody>
@@ -331,5 +371,6 @@
 </div>
 
     {{ partial('layout_partials/base_form', ['fields': generalForm, 'id': 'frm_general', 'apply_btn_id': 'btn_save']) }}
+    <div id="apply_result" class="alert" role="alert" style="display: none; margin: 0 1em 1em;"></div>
 </div>
 </div>
