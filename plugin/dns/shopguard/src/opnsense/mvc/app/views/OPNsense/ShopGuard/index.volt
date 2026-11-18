@@ -122,8 +122,13 @@
         // the user's decision on a domain: fake (always blocked), legit (never), none
         // a decision is saved in a second or two (Unbound rebuilds its blocklists in the
         // background): the buttons wait with a spinner, one decision at a time
+        // OPNsense's dark theme draws a disabled default button as an empty grey square:
+        // the small grid buttons stay enabled and are ignored while a decision is saved
+        var busy = false;
+
         function deciding(on, button) {
-            $('.verdict-decide, #decide_fake, #decide_legit, .decision-forget').prop('disabled', on);
+            busy = on;
+            $('#decide_fake, #decide_legit').prop('disabled', on);
             $('#decide_progress, #decide_progress_grid').toggle(on);
             // the clicked button itself turns into a spinner: it is where the user looks
             var icon = button ? $(button).find('.fa').first() : $();
@@ -135,6 +140,7 @@
         }
 
         function decide(domain, label, button) {
+            if (busy) return;
             deciding(true, button);
             ajaxCall('/api/shopguard/service/feedback', {domain: domain, label: label}, function (data) {
                 deciding(false, button);
@@ -186,13 +192,14 @@
                 if (!labels.length) {
                     $('<tr/>').append($('<td colspan="5"/>').text('{{ lang._('No decision yet.') }}')).appendTo(body);
                 }
-                $('#export_fake').prop('disabled', !labels.some(function (r) { return r.label === 'fake'; }));
+                // hidden rather than disabled (a disabled button is a grey square in the dark theme)
+                $('#export_fake').toggle(labels.some(function (r) { return r.label === 'fake'; }));
             });
         }
 
         $('#decide_fake, #decide_legit').click(function () {
             var domain = $.trim($('#decide_domain').val()).toLowerCase();
-            if (!domain) return;
+            if (!domain || busy) return;
             decide(domain, this.id === 'decide_fake' ? 'fake' : 'legit', this);
             $('#decide_domain').val('');
         });
@@ -369,7 +376,7 @@
             <button type="button" id="decide_legit" class="btn btn-success"><span class="fa fa-fw fa-check"></span> {{ lang._('Legitimate') }}</button>
             <span id="decide_progress" style="display: none;"><i class="fa fa-spinner fa-pulse"></i> {{ lang._('Saving…') }}</span>
             <span id="decide_info" class="text-success" style="display: none;"></span>
-            <button type="button" id="export_fake" class="btn btn-default pull-right" disabled="disabled"
+            <button type="button" id="export_fake" class="btn btn-default pull-right" style="display: none;"
                     title="{{ lang._('One domain per line, to report them (HaGeZi, Signal Arnaques)') }}">
                 <span class="fa fa-fw fa-download"></span> {{ lang._('Export the fake shops') }}</button>
         </div>
