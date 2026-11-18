@@ -22,6 +22,10 @@ PLUGIN = os.path.join(HERE, 'dns', 'shopguard')
 SRC = os.path.join(PLUGIN, 'src')
 LANG_DIR = os.path.join(PLUGIN, 'lang')
 DOMAIN = 'shopguard'
+# added to every compiled catalogue: a string translated the same as in English ("Worker")
+# is then not mistaken for a missing one (see Lang::_ in Lang.php)
+MARKER = 'shopguard-catalogue'
+MARKER_FOUND = 'present'
 
 QUOTED = r"'((?:[^'\\]|\\.)*)'"
 PATTERNS = {
@@ -173,7 +177,11 @@ def cmd_build(destdir):
         lang = os.path.splitext(os.path.basename(path))[0]
         out = os.path.join(destdir, lang, 'LC_MESSAGES')
         os.makedirs(out, exist_ok=True)
-        subprocess.run(['msgfmt', '--check', '-o', os.path.join(out, DOMAIN + '.mo'), path], check=True)
+        # plus the marker telling Lang.php that this language has a catalogue
+        with open(path, encoding='utf-8') as f:
+            po = f.read() + '\nmsgid %s\nmsgstr %s\n' % (po_quote(MARKER), po_quote(MARKER_FOUND))
+        subprocess.run(['msgfmt', '--check', '-o', os.path.join(out, DOMAIN + '.mo'), '-'],
+                       input=po.encode('utf-8'), check=True)
         print(os.path.join(out, DOMAIN + '.mo'))
 
 
