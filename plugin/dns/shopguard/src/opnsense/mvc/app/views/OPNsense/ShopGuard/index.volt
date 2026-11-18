@@ -120,15 +120,22 @@
         // the user's decision on a domain: fake (always blocked), legit (never), none
         // Unbound rebuilds its whole blocklist (tens of seconds with big lists): the decision
         // buttons wait with a spinner, one decision at a time
-        function deciding(on) {
-            $('.verdict-decide, #decide_fake, #decide_legit').prop('disabled', on);
+        function deciding(on, button) {
+            $('.verdict-decide, #decide_fake, #decide_legit, .decision-forget').prop('disabled', on);
             $('#decide_progress, #decide_progress_grid').toggle(on);
+            // the clicked button itself turns into a spinner: it is where the user looks
+            var icon = button ? $(button).find('.fa').first() : $();
+            if (on) {
+                icon.data('icon', icon.attr('class')).attr('class', 'fa fa-fw fa-spinner fa-pulse');
+            } else if (icon.data('icon')) {
+                icon.attr('class', icon.data('icon'));
+            }
         }
 
-        function decide(domain, label) {
-            deciding(true);
+        function decide(domain, label, button) {
+            deciding(true, button);
             ajaxCall('/api/shopguard/service/feedback', {domain: domain, label: label}, function (data) {
-                deciding(false);
+                deciding(false, button);
                 if (data.status !== 'ok') {
                     warn(data.message || '{{ lang._('The decision was not saved.') }}');
                 } else if (data.message) {
@@ -164,7 +171,8 @@
                             $('<button type="button" class="btn btn-xs btn-default"/>')
                                 .attr('title', '{{ lang._('Forget the decision') }}')
                                 .append('<span class="fa fa-fw fa-undo"></span>')
-                                .on('click', function () { decide(r.domain, 'none'); })
+                                .addClass('decision-forget')
+                                .on('click', function () { decide(r.domain, 'none', this); })
                         ))
                         .appendTo(body);
                 });
@@ -178,7 +186,7 @@
         $('#decide_fake, #decide_legit').click(function () {
             var domain = $.trim($('#decide_domain').val()).toLowerCase();
             if (!domain) return;
-            decide(domain, this.id === 'decide_fake' ? 'fake' : 'legit');
+            decide(domain, this.id === 'decide_fake' ? 'fake' : 'legit', this);
             $('#decide_domain').val('');
         });
 
@@ -255,7 +263,7 @@
         }).on('loaded.rs.jquery.bootgrid', function () {
             var rows = $(this).bootgrid('getCurrentRows');
             $(this).find('.verdict-decide').off('click').on('click', function () {
-                decide($(this).data('row-id'), $(this).data('label'));
+                decide($(this).data('row-id'), $(this).data('label'), this);
             });
             $(this).find('.verdict-details').off('click').on('click', function () {
                 var domain = $(this).data('row-id');
