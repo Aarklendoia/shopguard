@@ -318,10 +318,10 @@
         <thead>
             <tr>
                 <th data-column-id="domain" data-type="string" data-identifier="true" data-formatter="domain">{{ lang._('Domain') }}</th>
-                <th data-column-id="score" data-type="numeric" data-width="80" data-formatter="score">{{ lang._('Score') }}</th>
+                <th data-column-id="score" data-type="numeric" data-min-width="70" data-max-width="90" data-formatter="score">{{ lang._('Score') }}</th>
                 <th data-column-id="signals" data-formatter="signals">{{ lang._('Signals') }}</th>
-                <th data-column-id="checked_at" data-width="170" data-formatter="checked">{{ lang._('Last check') }}</th>
-                <th data-column-id="details" data-width="120" data-formatter="details" data-sortable="false"></th>
+                <th data-column-id="checked_at" data-min-width="165" data-max-width="200" data-formatter="checked">{{ lang._('Last check') }}</th>
+                <th data-column-id="details" data-min-width="125" data-max-width="150" data-formatter="details" data-sortable="false"></th>
             </tr>
         </thead>
         <tbody></tbody>
