@@ -51,6 +51,20 @@ class Lang
         }
     }
 
+    /* in every compiled catalogue (plugin/lang.py build) */
+    const MARKER = 'shopguard-catalogue';
+
+    /**
+     * Whether the plugin has a catalogue for the current language: its strings then win,
+     * even those translated the same as in English ("Worker", which OPNsense's own
+     * catalogue would turn into "Travailleur").
+     */
+    public static function catalogue()
+    {
+        self::bind();
+        return dgettext(self::DOMAIN, self::MARKER) !== self::MARKER;
+    }
+
     public static function _($text)
     {
         if ($text === null || $text === '') {
@@ -58,7 +72,7 @@ class Lang
         }
         self::bind();
         $translated = dgettext(self::DOMAIN, $text);
-        return $translated !== $text ? $translated : gettext($text);
+        return $translated !== $text || self::catalogue() ? $translated : gettext($text);
     }
 
     /**

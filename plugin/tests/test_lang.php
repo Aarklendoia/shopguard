@@ -27,6 +27,8 @@ Lang::$directory = $argv[1];
 check('plain string', Lang::_('Fake shop') === 'Fausse boutique', Lang::_('Fake shop'));
 check('unknown string: English', Lang::_('Not in any catalogue') === 'Not in any catalogue');
 check('empty string', Lang::_('') === '');
+check('catalogue of the language found', Lang::catalogue());
+check('same text as English kept', Lang::_('Worker') === 'Worker', Lang::_('Worker'));
 
 $st = Lang::messages([
     'status' => 'error',
@@ -64,6 +66,10 @@ check(
     $form
 );
 check('within(): default domain restored', textdomain(null) === 'messages', textdomain(null));
+
+setlocale(LC_ALL, 'C.UTF-8');
+check('no catalogue for the language', !Lang::catalogue());
+check('no catalogue: English', Lang::_('Fake shop') === 'Fake shop', Lang::_('Fake shop'));
 
 echo "\n$fails failure(s)\n";
 exit($fails ? 1 : 0);
