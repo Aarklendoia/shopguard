@@ -41,21 +41,26 @@ it can check right away.
 
 ```
 worker/                          shopguard-worker (Rust)
-  src/api.rs                     HTTP API used by the plugin
-  src/company.rs                 French company directory (SIREN exists, active?)
-  src/vies.rs                    EU VAT numbers checked in VIES
+  corpus/                        known fake and real shops, to measure the scoring
   src/analysis.rs                scoring pipeline, Analyzer trait
+  src/api.rs                     HTTP API used by the plugin
+  src/cli.rs                     `check`: analyzes domains once and prints their verdicts
+  src/company.rs                 French company directory (SIREN exists, active?)
   src/domain.rs                  registrable domain (Public Suffix List)
-  src/http.rs                    HTTP client of the analyzers (HTTPS, public addresses only)
-  src/html.rs                    reading hostile HTML as text: visible text, links
-  src/hosting.rs, hosting.txt    analyzer: hosting network, DROP lists, known platforms
   src/fetch.rs                   page downloads from hostile sites (HTML only, size, budget)
+  src/history.rs                 analyzer: domain history (Internet Archive, crt.sh, Cert Spotter)
+  src/hosting.rs, hosting.txt    analyzer: hosting network, DROP lists, known platforms
+  src/html.rs                    reading hostile HTML as text: visible text, links
+  src/http.rs                    HTTP client of the analyzers (HTTPS, public addresses only)
   src/legal.rs                   analyzer: legal notice, SIREN/SIRET checked in the directory
+  src/measure.rs                 `measure`: scores of the corpus as tables for pull requests
   src/netguard.rs                which addresses the worker may connect to (SSRF guard)
   src/page.rs                    analyzer: home page, does it look like a shop?
   src/rdap.rs                    analyzer: domain registration age (RDAP)
+  src/shop.rs                    analyzer: shop heuristics (fake shop kit, discounts, copied catalogue)
   src/siret.rs                   SIREN/SIRET validation
   src/tls.rs                     analyzer: certificate presented on port 443
+  src/vies.rs                    EU VAT numbers checked in VIES
   Dockerfile                     local build
   Dockerfile.release             release image (static binaries built by CI)
 plugin/dns/shopguard/            os-shopguard OPNsense plugin
@@ -142,6 +147,27 @@ cargo test
 cargo clippy --all-targets -- -D warnings
 SHOPGUARD_TOKEN=dev-token-0123456789abcdef0123456789 SHOPGUARD_LOG=debug cargo run
 ```
+
+#### Measuring a scoring change
+
+`worker/corpus/` lists known fake shops (`fake.txt`, from the HaGeZi *Fake* list and
+reports, with the date they were seen) and real shops (`legit.txt`, French and German, many
+on Shopify). A pull request that changes the scoring shows its effect on them:
+
+```sh
+cd worker
+cat corpus/*.txt | cargo run -q -- check --json --jobs 16 > /tmp/before.jsonl  # on main
+cat corpus/*.txt | cargo run -q -- check --json --jobs 16 > /tmp/after.jsonl   # branch
+cargo run -q -- measure corpus /tmp/before.jsonl /tmp/after.jsonl     # Markdown tables
+```
+
+`measure` prints how many fakes and real shops reach the blocking threshold, the real shops
+above 0 and the fakes under the threshold, and every score that changed. Fake shops die
+within weeks: add recent ones to `fake.txt` (and drop the ones that stop answering) before
+measuring. The network answers (crt.sh, registries) vary between runs: compare scores
+whose signals changed, not the noise. A run takes hours rather than minutes: the free
+services (crt.sh, Cert Spotter, RDAP servers, VIES) are queried one request at a time and
+spaced, whatever `--jobs` says, which only parallelizes the rest (pages, certificates).
 
 ## Plugin
 

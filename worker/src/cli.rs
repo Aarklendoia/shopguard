@@ -2,30 +2,49 @@
 //! the service, the store or the token. For trying the analyzers on known shops, real
 //! or fake, before they reach a network.
 
+use std::collections::BTreeMap;
 use std::io::{BufRead, Write};
 use std::process::ExitCode;
 use std::sync::Arc;
 
 use crate::analysis::{self, Verdict};
 
+const DEFAULT_JOBS: usize = 8;
+const MAX_JOBS: usize = 32;
+
 const USAGE: &str = "\
-usage: shopguard-worker check [--json] [DOMAIN|URL]...
+usage: shopguard-worker check [--json] [--jobs N] [DOMAIN|URL]...
 
 Analyzes each domain (or the domain of each URL) once and prints its verdict.
 Without arguments, reads one domain or URL per line from standard input
-(empty lines and lines starting with # are skipped).
+(empty lines skipped; # starts a comment, as in worker/corpus/*.txt).
 
-  --json   one verdict per line, as returned by GET /v1/verdicts/{domain}
+  --json     one verdict per line, as returned by GET /v1/verdicts/{domain}
+  --jobs N   domains analyzed at the same time (default 8, 1 to 32); the
+             verdicts are printed in the order of the input
 
 Logs go to standard error (SHOPGUARD_LOG, default warn).
 Exit status: 0; 1 when an argument is not a domain; 2 on a usage error.";
 
 pub async fn check(args: &[String]) -> ExitCode {
     let mut json = false;
+    let mut jobs = DEFAULT_JOBS;
     let mut inputs = Vec::new();
-    for a in args {
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
         match a.as_str() {
             "--json" => json = true,
+            "--jobs" => match it
+                .next()
+                .and_then(|n| n.parse().ok())
+                .filter(|n| (1..=MAX_JOBS).contains(n))
+            {
+                Some(n) => jobs = n,
+                None => {
+                    eprintln!("--jobs: expected 1 to {MAX_JOBS}\n\n{USAGE}");
+                    return ExitCode::from(2);
+                }
+            },
             "-h" | "--help" => {
                 println!("{USAGE}");
                 return ExitCode::SUCCESS;
@@ -42,8 +61,9 @@ pub async fn check(args: &[String]) -> ExitCode {
             .lock()
             .lines()
             .map_while(Result::ok)
-            .map(|l| l.trim().to_owned())
-            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            // `domain  # comment`, as in the measurement corpus
+            .map(|l| l.split('#').next().unwrap_or("").trim().to_owned())
+            .filter(|l| !l.is_empty())
             .collect();
     }
 
@@ -71,16 +91,55 @@ pub async fn check(args: &[String]) -> ExitCode {
         crate::http::client(),
         user_agent.as_deref(),
     ));
+    // `jobs` analyses at a time (dead fake shops spend most of it in timeouts), printed
+    // in the input order as soon as the earlier ones are done
+    let mut tasks = tokio::task::JoinSet::new();
+    let mut queue = domains.into_iter().enumerate();
+    let mut done: BTreeMap<usize, Verdict> = BTreeMap::new();
+    let mut next = 0;
     let mut out = std::io::stdout().lock();
-    for d in domains {
-        let v = analysis::verdict(&analyzers, d).await;
+    'outer: loop {
+        while tasks.len() < jobs
+            && let Some((i, d)) = queue.next()
+        {
+            let analyzers = analyzers.clone();
+            tasks.spawn(async move { (i, analysis::verdict(&analyzers, d).await) });
+        }
+        let Some(res) = tasks.join_next().await else {
+            break;
+        };
+        match res {
+            Ok((i, v)) => {
+                done.insert(i, v);
+            }
+            // a verdict cannot panic (analyzers are isolated); a cancelled task
+            Err(e) => {
+                eprintln!("analysis failed: {e}");
+                ok = false;
+                // its index is unknown: the later verdicts are printed at the end
+                continue;
+            }
+        }
+        while let Some(v) = done.remove(&next) {
+            next += 1;
+            let text = if json {
+                serde_json::to_string(&v).unwrap_or_default()
+            } else {
+                render(&v)
+            };
+            // stdout closed (`| head`): nothing left to do
+            if writeln!(out, "{text}").and_then(|()| out.flush()).is_err() {
+                break 'outer;
+            }
+        }
+    }
+    for v in done.into_values() {
         let text = if json {
             serde_json::to_string(&v).unwrap_or_default()
         } else {
             render(&v)
         };
-        // stdout closed (`| head`): nothing left to do
-        if writeln!(out, "{text}").and_then(|()| out.flush()).is_err() {
+        if writeln!(out, "{text}").is_err() {
             break;
         }
     }
