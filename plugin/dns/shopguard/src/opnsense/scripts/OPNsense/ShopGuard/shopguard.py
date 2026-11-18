@@ -216,7 +216,7 @@ def verdicts(cfg, min_score=0, offset=0, limit=50, search=''):
         rows = [r for r in rows if search in str(r.get('domain', '')) and int(r.get('score', 0)) >= min_score]
         total = len(rows)
         rows = rows[offset:offset + limit]
-    keep = ('domain', 'score', 'checked_at', 'signals')
+    keep = ('domain', 'score', 'checked_at', 'signals', 'feedback')
     return {'status': 'ok', 'total': int(total), 'rows': [{k: r.get(k) for k in keep} for r in rows]}
 
 
@@ -314,6 +314,19 @@ def _collect(cfg, source, state_dir, local, now):
     return finish(result)
 
 
+def effective_score(row):
+    """The user's feedback (worker 0.9+) overrides the computed score."""
+    label = (row.get('feedback') or {}).get('label') if isinstance(row.get('feedback'), dict) else None
+    if label == 'fake':
+        return 100
+    if label == 'legit':
+        return 0
+    try:
+        return int(row.get('score', 0))
+    except (TypeError, ValueError):
+        return 0
+
+
 def blocked_domains(cfg):
     """Domains to block: verdicts scoring at least the threshold, as a sorted list.
 
@@ -328,7 +341,7 @@ def blocked_domains(cfg):
             raise OSError(page['message'])
         for r in page['rows']:
             name = public_name(str(r.get('domain', '')))
-            if name and int(r.get('score', 0)) >= cfg['threshold']:
+            if name and effective_score(r) >= cfg['threshold']:
                 domains.add(name)
         offset += len(page['rows'])
         if not page['rows'] or offset >= page['total'] or len(domains) >= BLOCK_MAX:

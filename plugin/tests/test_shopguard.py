@@ -126,7 +126,8 @@ class Tests(unittest.TestCase):
     def test_verdicts_from_a_worker_without_paging(self):
         v = sg.verdicts(self.cfg(self.url), min_score=1, offset=0, limit=1, search='SHOP')
         self.assertEqual((v['status'], v['total']), ('ok', 2))
-        self.assertEqual(v['rows'], [{'domain': 'fake-shop.fr', 'score': 85, 'checked_at': 1, 'signals': []}])
+        self.assertEqual(v['rows'], [{'domain': 'fake-shop.fr', 'score': 85, 'checked_at': 1, 'signals': [],
+                                     'feedback': None}])
         self.assertEqual(sg.verdicts(self.cfg(self.url), 0, 2, 50)['rows'][0]['domain'], 'apple.com')
 
     def test_verdicts_rejects_odd_search_and_bad_token(self):
@@ -271,6 +272,13 @@ class Blocklist(unittest.TestCase):
         self.assertEqual(self.written(), ['fake-shop.fr', 'shop.example.com'])
         self.assertEqual(sg.blocked_count(self.state), 2)
 
+    def test_feedback_overrides_the_score(self):
+        e = sg.effective_score
+        self.assertEqual(e({'score': 40, 'feedback': {'label': 'fake', 'at': 1}}), 100)
+        self.assertEqual(e({'score': 90, 'feedback': {'label': 'legit', 'at': 1}}), 0)
+        self.assertEqual(e({'score': 90, 'feedback': None}), 90)
+        self.assertEqual(e({'score': 'x', 'feedback': 'odd'}), 0)
+
     def test_observe_mode_and_disabled_unblock(self):
         self.run_blocklist()
         self.cfg['mode'] = 'observe'
@@ -346,6 +354,7 @@ class Handler(unittest.TestCase):
 
 # what the handler needs from OPNsense's scripts/unbound/blocklists/__init__.py
 BASE = '''
+import re
 
 
 class BaseBlocklistHandler:
