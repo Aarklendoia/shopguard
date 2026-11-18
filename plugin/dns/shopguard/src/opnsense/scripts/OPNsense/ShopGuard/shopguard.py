@@ -32,6 +32,10 @@
         shopguard.py blocklist  in Block mode, the domains scoring at least the threshold
                                 for Unbound (blocklist.json, read by shopguard_bl.py)
         shopguard.py update     collect, then blocklist (cron, every 5 minutes)
+        shopguard.py feedback <domain> <fake|legit|none>
+                                the user's decision on a domain (worker 0.9+), then
+                                the blocklist right away
+        shopguard.py labels     every domain with a decision, as JSON
         shopguard.py verdicts <min_score> <offset> <limit> [search]
                                 one page of verdicts, highest score first, as JSON
 
@@ -387,6 +391,67 @@ def reload_unbound():
                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+LABELS = ('fake', 'legit', 'none')
+
+
+def worker_error(e):
+    """Message for a failed worker call."""
+    if isinstance(e, urllib.error.HTTPError):
+        if e.code == 401:
+            return 'The worker refused the token.'
+        if e.code in (404, 405):
+            return 'The worker is too old for decisions: update it to 0.9 or later.'
+        return 'Worker error: HTTP %d.' % e.code
+    return 'Worker unreachable: %s' % getattr(e, 'reason', e)
+
+
+def feedback(cfg, domain, label, state_dir=STATE_DIR, reload=None):
+    """Sends the user's decision on `domain` (fake, legit, or none to forget it), then
+    updates the blocklist so that it applies at once."""
+    name = public_name(domain)
+    if not name:
+        return {'status': 'error', 'message': 'Not a public domain name.'}
+    if label not in LABELS:
+        return {'status': 'error', 'message': 'The decision is fake, legit or none.'}
+    if not cfg['worker_url'] or not cfg['token']:
+        return {'status': 'error', 'message': 'Set the worker URL and token first.'}
+    try:
+        r = call(cfg, '/v1/feedback', {'domain': name, 'label': None if label == 'none' else label})
+    except urllib.error.HTTPError as e:
+        if e.code == 400:
+            return {'status': 'error', 'message': 'Not a public domain name.'}
+        return {'status': 'error', 'message': worker_error(e)}
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        return {'status': 'error', 'message': worker_error(e)}
+    b = blocklist(cfg, state_dir, reload) if cfg['enabled'] else {'status': 'ok', 'blocked': 0}
+    out = {'status': 'ok', 'domain': r.get('domain', name), 'label': r.get('label'),
+           'queued': bool(r.get('queued')), 'blocked': b.get('blocked', 0)}
+    if b['status'] != 'ok':
+        out['message'] = b['message']
+    return out
+
+
+def labels(cfg):
+    """Every domain with a decision: {'status', 'rows': [{domain, label, at, score}]}."""
+    if not cfg['worker_url'] or not cfg['token']:
+        return {'status': 'error', 'message': 'Set the worker URL and token first.', 'rows': []}
+    try:
+        rows = call(cfg, '/v1/feedback')
+    except (urllib.error.URLError, OSError, ValueError) as e:
+        return {'status': 'error', 'message': worker_error(e), 'rows': []}
+    if not isinstance(rows, list):
+        return {'status': 'error', 'message': 'Unexpected answer from the worker.', 'rows': []}
+    out = []
+    for r in rows:
+        fb = r.get('feedback') if isinstance(r, dict) else None
+        name = public_name(str(r.get('domain', ''))) if isinstance(r, dict) else None
+        if not name or not isinstance(fb, dict) or fb.get('label') not in ('fake', 'legit'):
+            continue
+        out.append({'domain': name, 'label': fb['label'], 'at': int(fb.get('at') or 0),
+                    'score': int(r.get('score') or 0), 'checked_at': int(r.get('checked_at') or 0)})
+    return {'status': 'ok', 'rows': out}
+
+
 def blocked_count(state_dir=STATE_DIR):
     return len(load_json(os.path.join(state_dir, BLOCKLIST), {}).get('domains', []))
 
@@ -397,8 +462,8 @@ def last_collect(state_dir=STATE_DIR):
 
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else ''
-    if cmd not in ('status', 'collect', 'blocklist', 'update', 'verdicts'):
-        print('usage: shopguard.py status|collect|blocklist|update|verdicts', file=sys.stderr)
+    if cmd not in ('status', 'collect', 'blocklist', 'update', 'verdicts', 'feedback', 'labels'):
+        print('usage: shopguard.py status|collect|blocklist|update|verdicts|feedback|labels', file=sys.stderr)
         return 2
     try:
         cfg = settings()
@@ -424,6 +489,17 @@ def main(argv):
         out['blocked'] = blocked_count()
         print(json.dumps(out))
         return 0
+    if cmd == 'feedback':
+        if len(argv) != 4:
+            print(json.dumps({'status': 'error', 'message': 'usage: feedback <domain> <fake|legit|none>'}))
+            return 2
+        out = feedback(cfg, argv[2], argv[3])
+        print(json.dumps(out))
+        return 0 if out['status'] == 'ok' else 1
+    if cmd == 'labels':
+        out = labels(cfg)
+        print(json.dumps(out))
+        return 0 if out['status'] == 'ok' else 1
     if cmd == 'blocklist':
         out = blocklist(cfg)
         print(json.dumps(out))

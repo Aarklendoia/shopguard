@@ -28,8 +28,29 @@ class FakeWorker(BaseHTTPRequestHandler):
     # domains received, and how many of the next ones to defer (queue full)
     received = []
     defer = 0
+    # domain -> label, as POST /v1/feedback leaves them
+    labels = {}
+
+    def answer(self, data, code=200):
+        body = json.dumps(data).encode()
+        self.send_response(code)
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
     def do_POST(self):
+        if self.path == '/v1/feedback' and self.headers.get('Authorization') != 'Bearer ' + TOKEN:
+            return self.answer({}, 401)
+        if self.path == '/v1/feedback':
+            req = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+            if req['domain'].endswith('.invalid'):
+                return self.answer({}, 400)
+            if req['label'] is None:
+                FakeWorker.labels.pop(req['domain'], None)
+            else:
+                FakeWorker.labels[req['domain']] = req['label']
+            return self.answer({'domain': req['domain'], 'label': req['label'], 'queued': False})
         if self.headers.get('Authorization') != 'Bearer ' + TOKEN or self.path != '/v1/domains':
             self.send_response(401 if self.path == '/v1/domains' else 404)
             self.end_headers()
@@ -55,6 +76,11 @@ class FakeWorker(BaseHTTPRequestHandler):
             self.send_response(401)
             self.end_headers()
             return
+        if self.path == '/v1/feedback':
+            return self.answer([{'domain': d, 'score': 12, 'checked_at': 5, 'signals': [],
+                                 'feedback': {'label': label, 'at': 7}}
+                                for d, label in sorted(FakeWorker.labels.items())] +
+                               [{'domain': 'nolabel.fr', 'score': 1}, 'garbage'])
         if self.path.startswith('/v1/verdicts'):
             rows = [{'domain': 'fake-shop.fr', 'score': 85, 'checked_at': 1, 'signals': [], 'extra': 1},
                     {'domain': 'shop.example.com', 'score': 40, 'checked_at': 2, 'signals': []},
@@ -304,6 +330,52 @@ class Blocklist(unittest.TestCase):
         self.cfg['worker_url'] = self.url
         self.assertEqual(self.run_blocklist()['status'], 'error')
         self.assertEqual(self.written(), ['fake-shop.fr'])
+
+
+class Decisions(unittest.TestCase):
+    """Feedback on a domain, and the list of decisions."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.srv = HTTPServer(('127.0.0.1', 0), FakeWorker)
+        threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
+        cls.url = 'http://127.0.0.1:%d' % cls.srv.server_port
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.shutdown()
+
+    def setUp(self):
+        FakeWorker.labels = {}
+        self.state = tempfile.mkdtemp()
+        self.cfg = {'enabled': True, 'worker_url': self.url, 'token': TOKEN, 'mode': 'block', 'threshold': 80}
+        self.reloads = 0
+
+    def reload(self):
+        self.reloads += 1
+
+    def test_decide_list_forget(self):
+        r = sg.feedback(self.cfg, 'WWW.Fake.Example.', 'fake', self.state, self.reload)
+        self.assertEqual((r['status'], r['domain'], r['label']), ('ok', 'www.fake.example', 'fake'))
+        # the blocklist was updated at once
+        self.assertEqual(self.reloads, 1)
+        sg.feedback(self.cfg, 'real.fr', 'legit', self.state, self.reload)
+        rows = sg.labels(self.cfg)['rows']
+        self.assertEqual([(x['domain'], x['label'], x['at']) for x in rows],
+                         [('real.fr', 'legit', 7), ('www.fake.example', 'fake', 7)])
+        sg.feedback(self.cfg, 'real.fr', 'none', self.state, self.reload)
+        self.assertEqual(FakeWorker.labels, {'www.fake.example': 'fake'})
+
+    def test_refused(self):
+        for domain, label in (('nas.lan', 'fake'), ('a.fr', 'maybe'), ('x.invalid', 'fake')):
+            r = sg.feedback(self.cfg, domain, label, self.state, self.reload)
+            self.assertEqual(r['status'], 'error', domain)
+        self.assertEqual(self.reloads, 0)
+        self.cfg['token'] = 'x' * 32
+        self.assertIn('token', sg.feedback(self.cfg, 'a.fr', 'fake', self.state, self.reload)['message'])
+        self.assertIn('token', sg.labels(self.cfg)['message'])
+        self.cfg['worker_url'] = 'http://127.0.0.1:9'
+        self.assertIn('unreachable', sg.labels(self.cfg)['message'])
 
 
 class Handler(unittest.TestCase):

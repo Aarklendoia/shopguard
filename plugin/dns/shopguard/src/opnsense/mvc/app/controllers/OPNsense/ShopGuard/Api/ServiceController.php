@@ -100,4 +100,33 @@ class ServiceController extends ApiControllerBase
             'current' => $current,
         ];
     }
+
+    /**
+     * the user's decision on a domain: POST domain and label (fake, legit, none to forget);
+     * the blocklist is updated right away
+     */
+    public function feedbackAction()
+    {
+        if (!$this->request->isPost()) {
+            return ['status' => 'failed'];
+        }
+        $domain = strtolower(trim((string)$this->request->getPost('domain', 'string', '')));
+        $label = (string)$this->request->getPost('label', 'string', '');
+        if (!preg_match('/^[a-z0-9_.-]{1,253}$/', $domain) || !in_array($label, ['fake', 'legit', 'none'], true)) {
+            return ['status' => 'error', 'message' => gettext('Enter a domain name.')];
+        }
+        $response = (new Backend())->configdpRun('shopguard feedback', [$domain, $label]);
+        $data = json_decode(trim($response), true);
+        return is_array($data) ? $data : ['status' => 'error', 'message' => trim($response)];
+    }
+
+    /**
+     * every domain with a decision: {status, rows: [{domain, label, at, score, checked_at}]}
+     */
+    public function labelsAction()
+    {
+        $response = (new Backend())->configdRun('shopguard labels');
+        $data = json_decode(trim($response), true);
+        return is_array($data) ? $data : ['status' => 'error', 'message' => trim($response), 'rows' => []];
+    }
 }
