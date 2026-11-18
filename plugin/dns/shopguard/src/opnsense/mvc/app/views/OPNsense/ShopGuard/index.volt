@@ -188,9 +188,11 @@
                     return response;
                 },
                 formatters: {
+                    domain: function (column, row) {
+                        return esc(row.domain) + decisionBadge(row.feedback);
+                    },
                     score: function (column, row) {
-                        return '<span class="label label-' + scoreClass(row.score) + '">' + esc(row.score) + '</span>' +
-                            decisionBadge(row.feedback);
+                        return '<span class="label label-' + scoreClass(row.score) + '">' + esc(row.score) + '</span>';
                     },
                     checked: function (column, row) {
                         return row.checked_at ? esc(new Date(row.checked_at * 1000).toLocaleString()) : '';
@@ -277,11 +279,11 @@
     <table id="grid-verdicts" class="table table-condensed table-hover table-striped">
         <thead>
             <tr>
-                <th data-column-id="domain" data-type="string" data-identifier="true">{{ lang._('Domain') }}</th>
-                <th data-column-id="score" data-type="numeric" data-width="6em" data-formatter="score">{{ lang._('Score') }}</th>
+                <th data-column-id="domain" data-type="string" data-identifier="true" data-formatter="domain">{{ lang._('Domain') }}</th>
+                <th data-column-id="score" data-type="numeric" data-width="80" data-formatter="score">{{ lang._('Score') }}</th>
                 <th data-column-id="signals" data-formatter="signals">{{ lang._('Signals') }}</th>
-                <th data-column-id="checked_at" data-width="12em" data-formatter="checked">{{ lang._('Last check') }}</th>
-                <th data-column-id="details" data-width="8em" data-formatter="details" data-sortable="false"></th>
+                <th data-column-id="checked_at" data-width="170" data-formatter="checked">{{ lang._('Last check') }}</th>
+                <th data-column-id="details" data-width="120" data-formatter="details" data-sortable="false"></th>
             </tr>
         </thead>
         <tbody></tbody>
