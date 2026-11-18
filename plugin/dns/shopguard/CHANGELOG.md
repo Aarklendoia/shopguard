@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/Aarklendoia/shopguard/compare/plugin-v0.5.0...plugin-v0.5.1) (2026-11-18)
+
+
+### Bug Fixes
+
+* **plugin:** a translation identical to English is kept ([#79](https://github.com/Aarklendoia/shopguard/issues/79)) ([dd7a206](https://github.com/Aarklendoia/shopguard/commit/dd7a20661ffb6c489478da282589c33fc0b657f8))
+
 ## [0.5.0](https://github.com/Aarklendoia/shopguard/compare/plugin-v0.4.4...plugin-v0.5.0) (2026-11-18)
 
 
