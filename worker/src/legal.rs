@@ -17,6 +17,12 @@
 //!   weighs a little towards a legitimate shop, invalid like a wrong check digit.
 //!
 //! Identifiers of the web host (also mandatory in the legal notice) are skipped.
+//!
+//! German shops must publish an Impressum (§ 5 DDG) with their commercial register entry
+//! (`HRB 12345`, Amtsgericht…) or at least their VAT ID (`USt-IdNr.`, checked in VIES).
+//! A German site (`.de`, a page in German) with neither weighs like a French one without
+//! a SIREN. The register entry itself cannot be checked (no free public source), so it
+//! only stops that signal.
 
 use std::sync::Arc;
 
@@ -54,6 +60,8 @@ pub enum Id {
     Invalid(String),
     /// VAT number of another EU country (`SK2021375994`), not checked.
     Foreign(String),
+    /// German commercial register entry (`HRB 12345`), not checked.
+    Register(String),
 }
 
 /// EU VAT country prefixes other than France (Greece is `EL`).
@@ -188,6 +196,31 @@ fn after_keyword(window: &str) -> Option<Id> {
     fourteen.or(nine).map(Id::Invalid)
 }
 
+/// German commercial register entries (`HRB 12345`, `HRA 9876 B`) in a folded text.
+fn register_entries(t: &str) -> Vec<Id> {
+    let mut out = Vec::new();
+    for kind in ["hrb", "hra"] {
+        let mut from = 0;
+        while let Some(p) = t[from..].find(kind) {
+            let pos = from + p;
+            from = pos + kind.len();
+            if t[..pos].ends_with(|c: char| c.is_alphanumeric()) {
+                continue;
+            }
+            let rest = t[from..].trim_start_matches([' ', '\u{a0}', ':', '.', '-', 'n', 'r', 'o']);
+            let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+            if !(1..=6).contains(&digits.len()) {
+                continue;
+            }
+            let id = Id::Register(format!("{} {digits}", kind.to_ascii_uppercase()));
+            if !out.contains(&id) {
+                out.push(id);
+            }
+        }
+    }
+    out
+}
+
 /// Company identifiers in the text of a page, in order, without the web host's.
 pub fn identifiers(text: &str) -> Vec<Id> {
     let t = fold(text);
@@ -218,6 +251,11 @@ pub fn identifiers(text: &str) -> Vec<Id> {
             out.push(id);
         }
     }
+    for id in register_entries(&t) {
+        if !out.contains(&id) {
+            out.push(id);
+        }
+    }
     out
 }
 
@@ -237,8 +275,17 @@ const TERMS: &[&str] = &[
     "terms of sale",
     "terms of service",
     "cgu",
+    "agb",
+    "allgemeine geschaftsbedingungen",
 ];
-const ABOUT: &[&str] = &["a propos", "qui sommes nous", "about", "legal"];
+const ABOUT: &[&str] = &[
+    "a propos",
+    "qui sommes nous",
+    "about",
+    "uber uns",
+    "ueber uns",
+    "legal",
+];
 
 /// Rank of a link as a page holding the legal notice: lower is better. What the link
 /// says counts more than its address: big sites file many pages under
@@ -277,6 +324,30 @@ pub fn is_french(domain: &str, html: &str, text: &str) -> bool {
         "conditions generales",
         "commande",
         "paiement",
+    ]
+    .iter()
+    .filter(|w| t.contains(*w))
+    .count()
+        >= 3
+}
+
+/// Whether the shop sells to Germany: `.de`, a page in German, or German shop words.
+pub fn is_german(domain: &str, html: &str, text: &str) -> bool {
+    if domain.ends_with(".de") || html::lang(html).is_some_and(|l| l.starts_with("de")) {
+        return true;
+    }
+    let lower = html.to_ascii_lowercase();
+    if lower.contains("content=\"de_de\"") || lower.contains("content=\"de-de\"") {
+        return true;
+    }
+    let t = fold(text);
+    [
+        "warenkorb",
+        "versand",
+        "impressum",
+        "kasse",
+        "zahlung",
+        "bestellung",
     ]
     .iter()
     .filter(|w| t.contains(*w))
@@ -427,6 +498,7 @@ impl Analyzer for Legal {
             }
             let home_text = html::text(&home.html);
             let french = is_french(domain, &home.html, &home_text);
+            let german = !french && is_german(domain, &home.html, &home_text);
 
             let mut ids: Vec<(Id, Url)> = identifiers(&home_text)
                 .into_iter()
@@ -460,7 +532,7 @@ impl Analyzer for Legal {
                 .iter()
                 .filter_map(|(id, u)| match id {
                     Id::Valid(s) => Some((s.as_str(), u)),
-                    Id::Invalid(_) | Id::Foreign(_) => None,
+                    Id::Invalid(_) | Id::Foreign(_) | Id::Register(_) => None,
                 })
                 .take(2)
                 .collect();
@@ -528,19 +600,35 @@ impl Analyzer for Legal {
                     }
                 }];
             }
+            if let Some((Id::Register(n), url)) =
+                ids.iter().find(|(id, _)| matches!(id, Id::Register(_)))
+            {
+                return vec![signal(
+                    "legal_register",
+                    0,
+                    format!("commercial register entry {n} given on {url} (not checked)"),
+                )];
+            }
             let where_ = match &legal_page {
                 Some(u) => format!("on the home page nor on {u}"),
                 None => "on the home page, and no legal notice page was found".into(),
             };
             let (weight, why) = if french {
                 (MISSING_WEIGHT, "a French shop must publish it")
+            } else if german {
+                (
+                    MISSING_WEIGHT,
+                    "a German shop must publish one in its Impressum",
+                )
             } else {
-                (0, "not a French site: other rules")
+                (0, "not a French or German site: other rules")
             };
             vec![signal(
                 "legal_id_missing",
                 weight,
-                format!("no company number (SIREN, SIRET, VAT) {where_} ({why})"),
+                format!(
+                    "no company number (SIREN, SIRET, VAT, commercial register) {where_} ({why})"
+                ),
             )]
         })
     }
@@ -733,6 +821,55 @@ mod tests {
             got,
             ["https://www.corporate.bouyguestelecom.fr/mentions-legales"]
         );
+    }
+
+    #[test]
+    fn german_register_entries() {
+        assert_eq!(
+            identifiers("Amtsgericht München, HRB 123456 – USt-IdNr.: DE 123456789"),
+            [
+                Id::Foreign("DE123456789".into()),
+                Id::Register("HRB 123456".into())
+            ]
+        );
+        assert_eq!(
+            identifiers("Registergericht: Amtsgericht Köln, HRA-Nr. 9876 B"),
+            [Id::Register("HRA 9876".into())]
+        );
+        assert_eq!(
+            identifiers("Handelsregister HRB: 42"),
+            [Id::Register("HRB 42".into())]
+        );
+        // not register entries: a word containing hrb, no number, a long number
+        assert!(identifiers("Schrbank chrank HRB folgt, HRB 12345678").is_empty());
+    }
+
+    #[test]
+    fn german_sites() {
+        assert!(is_german("laden.de", "", ""));
+        assert!(is_german("laden.com", "<html lang=\"de-DE\">", ""));
+        assert!(is_german(
+            "laden.com",
+            "<meta property=\"og:locale\" content=\"de_DE\">",
+            ""
+        ));
+        assert!(is_german(
+            "laden.com",
+            "<html>",
+            "Warenkorb – Kostenloser Versand – Impressum"
+        ));
+        assert!(!is_german(
+            "shop.com",
+            "<html lang=\"en\">",
+            "Cart – Free shipping"
+        ));
+        let link = |text: &str, path: &str| Link {
+            url: Url::parse(&format!("https://laden.de{path}")).unwrap(),
+            text: text.into(),
+        };
+        assert_eq!(legal_rank(&link("Impressum", "/impressum")), Some(0));
+        assert_eq!(legal_rank(&link("AGB", "/agb")), Some(1));
+        assert_eq!(legal_rank(&link("Über uns", "/pages/ueber-uns")), Some(4));
     }
 
     #[test]
