@@ -29,9 +29,25 @@
 namespace OPNsense\ShopGuard\Api;
 
 use OPNsense\Base\ApiMutableModelControllerBase;
+use OPNsense\ShopGuard\Lang;
 
 class SettingsController extends ApiMutableModelControllerBase
 {
     protected static $internalModelClass = '\OPNsense\ShopGuard\ShopGuard';
     protected static $internalModelName = 'shopguard';
+
+    /* the mode names and validation messages of the model, from the plugin's catalogue */
+    public function getAction()
+    {
+        return Lang::within(function () {
+            return parent::getAction();
+        });
+    }
+
+    public function setAction()
+    {
+        return Lang::within(function () {
+            return parent::setAction();
+        });
+    }
 }

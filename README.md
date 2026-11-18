@@ -64,7 +64,9 @@ worker/                          shopguard-worker (Rust)
   Dockerfile                     local build
   Dockerfile.release             release image (static binaries built by CI)
 plugin/dns/shopguard/            os-shopguard OPNsense plugin
-plugin/tests/                    plugin backend tests (fake worker)
+plugin/dns/shopguard/lang/       plugin translations, one gettext catalogue per language
+plugin/lang.py                   translation tooling: extract, update, check, build
+plugin/tests/                    plugin backend tests (fake worker), translations test
 deploy/docker-compose.yml        example worker deployment
 ```
 
@@ -213,6 +215,30 @@ Backend tests, against a fake worker:
 ```sh
 python3 -I plugin/tests/test_shopguard.py plugin/dns/shopguard/src/opnsense/scripts/OPNsense/ShopGuard/shopguard.py
 ```
+
+### Translation
+
+The plugin has its own gettext catalogue, `shopguard`: OPNsense only translates the strings
+of its official plugins. Translations are in `plugin/dns/shopguard/lang/<lang>.po`, one per
+OPNsense interface language. French (`fr_FR.po`) is reviewed; the other ones are machine
+translations, as their header says: corrections from native speakers are welcome. The
+package installs them compiled in `/usr/local/share/locale`, and the interface falls back to
+the OPNsense catalogue, then to English.
+
+Strings come from the view (`sgLang._()`), the PHP code (`Lang::_()`), the settings form,
+the settings model (mode names, validation messages) and the backend messages:
+`shopguard.py` writes each message with its English template and arguments (`message_t`),
+translated by the web interface. The signals of a verdict come from the worker and stay in
+English.
+
+```sh
+python3 -I plugin/lang.py update    # add the new strings to each .po, to translate
+python3 -I plugin/lang.py check     # what the CI checks: everything translated, same placeholders
+```
+
+To add a language that OPNsense gains later, copy `fr_FR.po` to `<lang>.po` (OPNsense
+language code, see `get_locale_list()` in OPNsense's `src/etc/inc/system.inc`) and translate
+every `msgstr`.
 
 ## Releases
 

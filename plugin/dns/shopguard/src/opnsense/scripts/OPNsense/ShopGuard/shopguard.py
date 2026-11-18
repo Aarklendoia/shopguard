@@ -150,8 +150,8 @@ def unbound_names(since):
     NOERROR), not answered from local-data (source 2: host overrides of the LAN).
     """
     if not os.path.exists(UNBOUND_STATS) or not os.path.exists(UNBOUND_DB):
-        raise LookupError('Unbound statistics are disabled: enable them in Reporting -> Unbound DNS, '
-                          'Settings tab. ShopGuard reads the domains from there.')
+        raise LookupError(M('Unbound statistics are disabled: enable them in Reporting -> Unbound DNS, '
+                            'Settings tab. ShopGuard reads the domains from there.'))
     if SITE_PYTHON not in sys.path:
         sys.path.append(SITE_PYTHON)
     from duckdb_helper import DbConnection
@@ -165,6 +165,39 @@ def unbound_names(since):
         ).fetchall()
     newest = max((int(t) for _, t in rows if t is not None), default=since)
     return {d for d, _ in rows if d}, newest
+
+
+class M(str):
+    """Message shown in the web interface: the English text, which also keeps its template
+    and arguments so that the interface can translate it (OPNsense\\ShopGuard\\Lang).
+
+    M('Worker error: HTTP %d.', 502) == 'Worker error: HTTP 502.'. The templates are the
+    msgids of plugin/dns/shopguard/lang/*.po.
+    """
+
+    def __new__(cls, template, *args):
+        args = [a if isinstance(a, (int, float)) else str(a) for a in args]
+        self = str.__new__(cls, template % tuple(args) if args else template)
+        self.template, self.args = template, args
+        return self
+
+
+def templated(data):
+    """Add message_t = [template, args] next to each M message, at any depth."""
+    if isinstance(data, dict):
+        for value in data.values():
+            templated(value)
+        if isinstance(data.get('message'), M):
+            data['message_t'] = [data['message'].template, data['message'].args]
+    elif isinstance(data, list):
+        for value in data:
+            templated(value)
+    return data
+
+
+def message(e):
+    """The message of an exception, as an M when it was raised with one."""
+    return e.args[0] if e.args and isinstance(e.args[0], M) else str(getattr(e, 'reason', e))
 
 
 def load_json(path, default):
@@ -205,13 +238,13 @@ def verdicts(cfg, min_score=0, offset=0, limit=50, search=''):
     Workers before 0.3 return every verdict without X-Total-Count: the page is cut here.
     """
     if not cfg['worker_url']:
-        return {'status': 'error', 'message': 'No worker URL configured.', 'total': 0, 'rows': []}
+        return {'status': 'error', 'message': M('No worker URL configured.'), 'total': 0, 'rows': []}
     min_score = max(0, min(100, int(min_score)))
     offset = max(0, int(offset))
     limit = max(1, min(MAX_PAGE, int(limit)))
     search = search.strip().lower()
     if not SEARCH.match(search):
-        return {'status': 'error', 'message': 'Search for part of a domain name.', 'total': 0, 'rows': []}
+        return {'status': 'error', 'message': M('Search for part of a domain name.'), 'total': 0, 'rows': []}
     query = urllib.parse.urlencode({'min_score': min_score, 'q': search, 'offset': offset, 'limit': limit})
     req = urllib.request.Request(cfg['worker_url'] + '/v1/verdicts?' + query)
     req.add_header('Authorization', 'Bearer ' + cfg['token'])
@@ -221,13 +254,11 @@ def verdicts(cfg, min_score=0, offset=0, limit=50, search=''):
             rows = json.load(resp)
             total = resp.headers.get('X-Total-Count')
     except urllib.error.HTTPError as e:
-        message = 'The worker refused the token.' if e.code == 401 else 'Worker error: HTTP %d.' % e.code
-        return {'status': 'error', 'message': message, 'total': 0, 'rows': []}
+        return {'status': 'error', 'message': worker_error(e, decisions=False), 'total': 0, 'rows': []}
     except (urllib.error.URLError, OSError, ValueError) as e:
-        return {'status': 'error', 'message': 'Worker unreachable: %s' % getattr(e, 'reason', e),
-                'total': 0, 'rows': []}
+        return {'status': 'error', 'message': worker_error(e), 'total': 0, 'rows': []}
     if not isinstance(rows, list):
-        return {'status': 'error', 'message': 'Unexpected answer from the worker.', 'total': 0, 'rows': []}
+        return {'status': 'error', 'message': M('Unexpected answer from the worker.'), 'total': 0, 'rows': []}
     if total is None:
         # older worker: no paging, no search
         rows = [r for r in rows if search in str(r.get('domain', '')) and int(r.get('score', 0)) >= min_score]
@@ -239,15 +270,13 @@ def verdicts(cfg, min_score=0, offset=0, limit=50, search=''):
 
 def status(cfg):
     if not cfg['worker_url']:
-        return {'status': 'error', 'message': 'No worker URL configured.'}
+        return {'status': 'error', 'message': M('No worker URL configured.')}
     try:
         s = call(cfg, '/v1/status')
     except urllib.error.HTTPError as e:
-        if e.code == 401:
-            return {'status': 'error', 'message': 'The worker refused the token.'}
-        return {'status': 'error', 'message': 'Worker error: HTTP %d.' % e.code}
+        return {'status': 'error', 'message': worker_error(e, decisions=False)}
     except (urllib.error.URLError, OSError, ValueError) as e:
-        return {'status': 'error', 'message': 'Worker unreachable: %s' % getattr(e, 'reason', e)}
+        return {'status': 'error', 'message': worker_error(e)}
     return {'status': 'ok', 'version': s.get('version', '?'), 'pending': s.get('pending', 0)}
 
 
@@ -257,7 +286,7 @@ def collect(cfg, source=unbound_names, state_dir=STATE_DIR, local='', now=None):
     if not cfg['enabled']:
         return {'status': 'disabled'}
     if not cfg['worker_url'] or not cfg['token']:
-        return {'status': 'error', 'message': 'Set the worker URL and token first.'}
+        return {'status': 'error', 'message': M('Set the worker URL and token first.')}
     os.makedirs(state_dir, mode=0o700, exist_ok=True)
     lock = open(os.path.join(state_dir, 'collect.lock'), 'w')
     try:
@@ -279,7 +308,8 @@ def _collect(cfg, source, state_dir, local, now):
     since = int(state.get('since', 0))
 
     def finish(result):
-        state['last'] = dict(result, time=now)
+        # the message keeps its template: the status page translates it
+        state['last'] = templated(dict(result, time=now))
         save_json(state_path, state)
         if result['status'] != 'ok':
             syslog.syslog(syslog.LOG_ERR, 'shopguard collect: %s' % result['message'])
@@ -288,9 +318,9 @@ def _collect(cfg, source, state_dir, local, now):
     try:
         names, newest = source(max(0, since - OVERLAP))
     except LookupError as e:
-        return finish({'status': 'error', 'message': str(e)})
+        return finish({'status': 'error', 'message': message(e)})
     except Exception as e:  # duckdb errors have no common base we can import here
-        return finish({'status': 'error', 'message': 'Cannot read the Unbound database: %s' % e})
+        return finish({'status': 'error', 'message': M('Cannot read the Unbound database: %s', e)})
 
     sent = {n: t for n, t in sent.items() if isinstance(t, int) and now - t < RESEND_AFTER}
     new = sorted({p for p in (public_name(n, local) for n in names) if p and p not in sent})
@@ -302,11 +332,11 @@ def _collect(cfg, source, state_dir, local, now):
             r = call(cfg, '/v1/domains', {'domains': batch})
         except urllib.error.HTTPError as e:
             complete = False
-            error = 'The worker refused the token.' if e.code == 401 else 'Worker error: HTTP %d.' % e.code
+            error = worker_error(e, decisions=False)
             break
         except (urllib.error.URLError, OSError, ValueError) as e:
             complete = False
-            error = 'Worker unreachable: %s' % getattr(e, 'reason', e)
+            error = worker_error(e)
             break
         queued += int(r.get('queued', 0))
         ignored += int(r.get('ignored', 0))
@@ -381,13 +411,13 @@ def blocklist(cfg, state_dir=STATE_DIR, now=None, apply=None):
         domains = []
     else:
         if not cfg['worker_url'] or not cfg['token']:
-            return {'status': 'error', 'message': 'Set the worker URL and token first.'}
+            return {'status': 'error', 'message': M('Set the worker URL and token first.')}
         try:
             domains = blocked_domains(cfg)
         except (OSError, ValueError) as e:
-            message = 'Blocklist not updated, the previous one stays: %s' % getattr(e, 'reason', e)
-            syslog.syslog(syslog.LOG_ERR, 'shopguard blocklist: %s' % message)
-            return {'status': 'error', 'message': message, 'blocked': len(old.get('domains', []))}
+            text = M('Blocklist not updated, the previous one stays: %s', message(e))
+            syslog.syslog(syslog.LOG_ERR, 'shopguard blocklist: %s' % text)
+            return {'status': 'error', 'message': text, 'blocked': len(old.get('domains', []))}
     changed = domains != old.get('domains', [])
     if changed or not os.path.exists(path):
         # read by Unbound's blocklist script, which runs as root like this one
@@ -465,15 +495,15 @@ def reload_unbound():
 LABELS = ('fake', 'legit', 'none')
 
 
-def worker_error(e):
-    """Message for a failed worker call."""
+def worker_error(e, decisions=True):
+    """Message for a failed worker call (`decisions`: a call that needs worker 0.9)."""
     if isinstance(e, urllib.error.HTTPError):
         if e.code == 401:
-            return 'The worker refused the token.'
-        if e.code in (404, 405):
-            return 'The worker is too old for decisions: update it to 0.9 or later.'
-        return 'Worker error: HTTP %d.' % e.code
-    return 'Worker unreachable: %s' % getattr(e, 'reason', e)
+            return M('The worker refused the token.')
+        if decisions and e.code in (404, 405):
+            return M('The worker is too old for decisions: update it to 0.9 or later.')
+        return M('Worker error: HTTP %d.', e.code)
+    return M('Worker unreachable: %s', getattr(e, 'reason', e))
 
 
 def feedback(cfg, domain, label, state_dir=STATE_DIR, apply=None):
@@ -481,16 +511,16 @@ def feedback(cfg, domain, label, state_dir=STATE_DIR, apply=None):
     updates the blocklist so that it applies at once."""
     name = public_name(domain)
     if not name:
-        return {'status': 'error', 'message': 'Not a public domain name.'}
+        return {'status': 'error', 'message': M('Not a public domain name.')}
     if label not in LABELS:
-        return {'status': 'error', 'message': 'The decision is fake, legit or none.'}
+        return {'status': 'error', 'message': M('The decision is fake, legit or none.')}
     if not cfg['worker_url'] or not cfg['token']:
-        return {'status': 'error', 'message': 'Set the worker URL and token first.'}
+        return {'status': 'error', 'message': M('Set the worker URL and token first.')}
     try:
         r = call(cfg, '/v1/feedback', {'domain': name, 'label': None if label == 'none' else label})
     except urllib.error.HTTPError as e:
         if e.code == 400:
-            return {'status': 'error', 'message': 'Not a public domain name.'}
+            return {'status': 'error', 'message': M('Not a public domain name.')}
         return {'status': 'error', 'message': worker_error(e)}
     except (urllib.error.URLError, OSError, ValueError) as e:
         return {'status': 'error', 'message': worker_error(e)}
@@ -505,13 +535,13 @@ def feedback(cfg, domain, label, state_dir=STATE_DIR, apply=None):
 def labels(cfg):
     """Every domain with a decision: {'status', 'rows': [{domain, label, at, score}]}."""
     if not cfg['worker_url'] or not cfg['token']:
-        return {'status': 'error', 'message': 'Set the worker URL and token first.', 'rows': []}
+        return {'status': 'error', 'message': M('Set the worker URL and token first.'), 'rows': []}
     try:
         rows = call(cfg, '/v1/feedback')
     except (urllib.error.URLError, OSError, ValueError) as e:
         return {'status': 'error', 'message': worker_error(e), 'rows': []}
     if not isinstance(rows, list):
-        return {'status': 'error', 'message': 'Unexpected answer from the worker.', 'rows': []}
+        return {'status': 'error', 'message': M('Unexpected answer from the worker.'), 'rows': []}
     out = []
     for r in rows:
         fb = r.get('feedback') if isinstance(r, dict) else None
@@ -542,7 +572,7 @@ def main(argv):
     try:
         cfg = settings()
     except (OSError, ET.ParseError) as e:
-        print(json.dumps({'status': 'error', 'message': 'Cannot read the configuration: %s' % e}))
+        print(json.dumps(templated({'status': 'error', 'message': M('Cannot read the configuration: %s', e)})))
         return 1
     if cmd == 'verdicts':
         try:
@@ -554,7 +584,7 @@ def main(argv):
                               'total': 0, 'rows': []}))
             return 2
         out = verdicts(cfg, *nums, search=argv[5] if len(argv) > 5 else '')
-        print(json.dumps(out))
+        print(json.dumps(templated(out)))
         return 0 if out['status'] == 'ok' else 1
     if cmd == 'status':
         out = status(cfg)
@@ -563,31 +593,31 @@ def main(argv):
         out['blocked'] = blocked_count()
         # not given to Unbound yet: a rebuild is running or waits for the cron
         out['applying'] = load_json(os.path.join(STATE_DIR, BLOCKLIST), {}).get('domains', []) != applied_domains()
-        print(json.dumps(out))
+        print(json.dumps(templated(out)))
         return 0
     if cmd == 'feedback':
         if len(argv) != 4:
             print(json.dumps({'status': 'error', 'message': 'usage: feedback <domain> <fake|legit|none>'}))
             return 2
         out = feedback(cfg, argv[2], argv[3])
-        print(json.dumps(out))
+        print(json.dumps(templated(out)))
         return 0 if out['status'] == 'ok' else 1
     if cmd == 'labels':
         out = labels(cfg)
-        print(json.dumps(out))
+        print(json.dumps(templated(out)))
         return 0 if out['status'] == 'ok' else 1
     if cmd == 'blocklist':
         out = blocklist(cfg)
-        print(json.dumps(out))
+        print(json.dumps(templated(out)))
         return 0 if out['status'] == 'ok' else 1
     out = collect(cfg, local=local_domain())
     if cmd == 'update':
         # the cron job: applied here, and catches up with a background run that failed
         out = {'collect': out, 'blocklist': blocklist(cfg, apply=apply_now)}
-        print(json.dumps(out))
+        print(json.dumps(templated(out)))
         return 0 if out['blocklist']['status'] == 'ok' and \
             out['collect']['status'] in ('ok', 'disabled', 'busy') else 1
-    print(json.dumps(out))
+    print(json.dumps(templated(out)))
     return 0 if out['status'] in ('ok', 'disabled', 'busy') else 1
 
 

@@ -1,0 +1,272 @@
+# Machine translation, not reviewed by a native speaker: corrections are welcome.
+msgid ""
+msgstr ""
+"Project-Id-Version: os-shopguard\n"
+"PO-Revision-Date: 2026-11-18 15:00+0100\n"
+"Last-Translator: machine translation\n"
+"Language-Team: Persian\n"
+"Language: fa_IR\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "the cron job could not be updated."
+msgstr "به‌روزرسانی کار cron ممکن نشد."
+
+msgid "Enter a domain name."
+msgstr "یک نام دامنه وارد کنید."
+
+msgid "Enable"
+msgstr "فعال‌سازی"
+
+msgid "Send the domains resolved by Unbound to the worker. Only domain names are sent, never client addresses."
+msgstr "دامنه‌هایی را که Unbound ترجمه می‌کند به worker بفرست. فقط نام دامنه‌ها فرستاده می‌شود، هرگز نشانی کلاینت‌ها."
+
+msgid "Worker URL"
+msgstr "نشانی worker"
+
+msgid "http://htpc.lan:8080"
+msgstr "http://htpc.lan:8080"
+
+msgid "Base URL of the shopguard-worker container."
+msgstr "نشانی پایهٔ کانتینر shopguard-worker."
+
+msgid "Token"
+msgstr "توکن"
+
+msgid "SHOPGUARD_TOKEN of the worker."
+msgstr "SHOPGUARD_TOKEN مربوط به worker."
+
+msgid "Mode"
+msgstr "حالت"
+
+msgid "Observe only: suspicious domains are listed here. Block: the domains scoring at least the threshold, with their subdomains, are also blocked by Unbound (answered NXDOMAIN, updated every 5 minutes). They appear in Reporting -> Unbound DNS as blocked by ShopGuard."
+msgstr "فقط مشاهده: دامنه‌های مشکوک اینجا فهرست می‌شوند. مسدودسازی: دامنه‌هایی که امتیازشان به آستانه می‌رسد، همراه با زیردامنه‌هایشان، توسط Unbound نیز مسدود می‌شوند (پاسخ NXDOMAIN، به‌روزرسانی هر ۵ دقیقه). آن‌ها در گزارش‌ها -> Unbound DNS به‌عنوان مسدودشده توسط ShopGuard نمایش داده می‌شوند."
+
+msgid "Score threshold"
+msgstr "آستانهٔ امتیاز"
+
+msgid "Domains scoring at least this value (1 to 100) are considered fake shops."
+msgstr "دامنه‌هایی که امتیازشان به این مقدار (۱ تا ۱۰۰) برسد فروشگاه جعلی به شمار می‌آیند."
+
+msgid "Use the worker base URL, e.g. http://htpc.lan:8080 or http://[2001:db8::10]:8080."
+msgstr "از نشانی پایهٔ worker استفاده کنید، مثلاً http://htpc.lan:8080 یا http://[2001:db8::10]:8080."
+
+msgid "The token is the SHOPGUARD_TOKEN of the worker: at least 32 characters."
+msgstr "توکن همان SHOPGUARD_TOKEN مربوط به worker است: دست‌کم ۳۲ نویسه."
+
+msgid "Observe only"
+msgstr "فقط مشاهده"
+
+msgid "Block in Unbound"
+msgstr "مسدودسازی در Unbound"
+
+msgid "Choose a score from 1 to 100."
+msgstr "امتیازی از ۱ تا ۱۰۰ انتخاب کنید."
+
+msgid "Reachable (version %s)"
+msgstr "در دسترس (نسخهٔ %s)"
+
+msgid "Unreachable"
+msgstr "در دسترس نیست"
+
+msgid "%s domains blocked in Unbound (being applied…)"
+msgstr "دامنه‌های مسدودشده در Unbound: %s (در حال اعمال…)"
+
+msgid "%s domains blocked in Unbound"
+msgstr "دامنه‌های مسدودشده در Unbound: %s"
+
+msgid "Observe only: nothing blocked"
+msgstr "فقط مشاهده: چیزی مسدود نمی‌شود"
+
+msgid "Disabled"
+msgstr "غیرفعال"
+
+msgid "Not run yet"
+msgstr "هنوز اجرا نشده"
+
+msgid "%s: %s new domains sent"
+msgstr "%s: دامنه‌های تازهٔ فرستاده‌شده: %s"
+
+msgid "Settings saved, but:"
+msgstr "تنظیمات ذخیره شد، اما:"
+
+msgid "the blocklist could not be updated."
+msgstr "به‌روزرسانی فهرست مسدودسازی ممکن نشد."
+
+msgid "Settings applied: %s domains blocked in Unbound."
+msgstr "تنظیمات اعمال شد: دامنه‌های مسدودشده در Unbound: %s."
+
+msgid "Unbound applies the changes within 1 to 2 minutes."
+msgstr "Unbound تغییرات را ظرف ۱ تا ۲ دقیقه اعمال می‌کند."
+
+msgid "Settings applied: observe only, nothing is blocked."
+msgstr "تنظیمات اعمال شد: فقط مشاهده، چیزی مسدود نمی‌شود."
+
+msgid "Settings applied: ShopGuard is disabled."
+msgstr "تنظیمات اعمال شد: ShopGuard غیرفعال است."
+
+msgid "ShopGuard"
+msgstr "ShopGuard"
+
+msgid "The decision was not saved."
+msgstr "تصمیم ذخیره نشد."
+
+msgid "Saved. Unbound applies it within 1 to 2 minutes."
+msgstr "ذخیره شد. Unbound آن را ظرف ۱ تا ۲ دقیقه اعمال می‌کند."
+
+msgid "Saved."
+msgstr "ذخیره شد."
+
+msgid "marked fake"
+msgstr "علامت‌خورده به‌عنوان جعلی"
+
+msgid "marked legitimate"
+msgstr "علامت‌خورده به‌عنوان معتبر"
+
+msgid "not analyzed yet"
+msgstr "هنوز تحلیل نشده"
+
+msgid "Forget the decision"
+msgstr "فراموش کردن تصمیم"
+
+msgid "No decision yet."
+msgstr "هنوز تصمیمی نیست."
+
+msgid "Signals"
+msgstr "نشانه‌ها"
+
+msgid "Legitimate: never block"
+msgstr "معتبر: هرگز مسدود نکن"
+
+msgid "Fake shop: always block"
+msgstr "فروشگاه جعلی: همیشه مسدود کن"
+
+msgid "Weight"
+msgstr "وزن"
+
+msgid "Signal"
+msgstr "نشانه"
+
+msgid "Detail"
+msgstr "جزئیات"
+
+msgid "%s — score %s"
+msgstr "%s — امتیاز %s"
+
+msgid "Close"
+msgstr "بستن"
+
+msgid "Verdicts"
+msgstr "نتیجه‌ها"
+
+msgid "Decisions"
+msgstr "تصمیم‌ها"
+
+msgid "Settings"
+msgstr "تنظیمات"
+
+msgid "Minimum score"
+msgstr "کمینهٔ امتیاز"
+
+msgid "0 (all)"
+msgstr "0 (همه)"
+
+msgid "blocking threshold"
+msgstr "آستانهٔ مسدودسازی"
+
+msgid "Saving…"
+msgstr "در حال ذخیره…"
+
+msgid "Domain"
+msgstr "دامنه"
+
+msgid "Score"
+msgstr "امتیاز"
+
+msgid "Last check"
+msgstr "آخرین بررسی"
+
+msgid "Actions"
+msgstr "کنش‌ها"
+
+msgid "Your decisions override the score: a domain marked fake is always blocked (in Block mode), one marked legitimate never is. They are kept by the worker, which also uses them to improve its scoring."
+msgstr "تصمیم‌های شما بر امتیاز مقدم‌اند: دامنه‌ای که جعلی علامت بخورد همیشه مسدود می‌شود (در حالت مسدودسازی) و دامنه‌ای که معتبر علامت بخورد هرگز. worker آن‌ها را نگه می‌دارد و برای بهبود امتیازدهی نیز از آن‌ها استفاده می‌کند."
+
+msgid "Fake shop"
+msgstr "فروشگاه جعلی"
+
+msgid "Legitimate"
+msgstr "معتبر"
+
+msgid "One domain per line, to report them (HaGeZi, Signal Arnaques)"
+msgstr "یک دامنه در هر خط، برای گزارش آن‌ها (HaGeZi، Signal Arnaques)"
+
+msgid "Export the fake shops"
+msgstr "برون‌بری فروشگاه‌های جعلی"
+
+msgid "Decision"
+msgstr "تصمیم"
+
+msgid "Since"
+msgstr "از"
+
+msgid "Computed score"
+msgstr "امتیاز محاسبه‌شده"
+
+msgid "Worker"
+msgstr "Worker"
+
+msgid "Status"
+msgstr "وضعیت"
+
+msgid "Domains waiting for analysis"
+msgstr "دامنه‌های در انتظار تحلیل"
+
+msgid "Last collection"
+msgstr "آخرین گردآوری"
+
+msgid "Blocking"
+msgstr "مسدودسازی"
+
+msgid "Unbound statistics are disabled: enable them in Reporting -> Unbound DNS, Settings tab. ShopGuard reads the domains from there."
+msgstr "آمار Unbound غیرفعال است: آن را در گزارش‌ها -> Unbound DNS، زبانهٔ تنظیمات فعال کنید. ShopGuard دامنه‌ها را از آنجا می‌خواند."
+
+msgid "No worker URL configured."
+msgstr "نشانی worker پیکربندی نشده است."
+
+msgid "Search for part of a domain name."
+msgstr "بخشی از یک نام دامنه را جستجو کنید."
+
+msgid "Unexpected answer from the worker."
+msgstr "پاسخ غیرمنتظره از worker."
+
+msgid "Set the worker URL and token first."
+msgstr "ابتدا نشانی و توکن worker را تنظیم کنید."
+
+msgid "Cannot read the Unbound database: %s"
+msgstr "خواندن پایگاه دادهٔ Unbound ممکن نیست: %s"
+
+msgid "Blocklist not updated, the previous one stays: %s"
+msgstr "فهرست مسدودسازی به‌روز نشد، فهرست قبلی می‌ماند: %s"
+
+msgid "The worker refused the token."
+msgstr "worker توکن را رد کرد."
+
+msgid "The worker is too old for decisions: update it to 0.9 or later."
+msgstr "worker برای تصمیم‌ها بیش از حد قدیمی است: آن را به 0.9 یا بالاتر به‌روز کنید."
+
+msgid "Worker error: HTTP %d."
+msgstr "خطای worker: HTTP %d."
+
+msgid "Worker unreachable: %s"
+msgstr "worker در دسترس نیست: %s"
+
+msgid "Not a public domain name."
+msgstr "نام دامنهٔ عمومی نیست."
+
+msgid "The decision is fake, legit or none."
+msgstr "تصمیم fake، legit یا none است."
+
+msgid "Cannot read the configuration: %s"
+msgstr "خواندن پیکربندی ممکن نیست: %s"

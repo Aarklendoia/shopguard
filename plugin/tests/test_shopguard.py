@@ -165,6 +165,19 @@ class Tests(unittest.TestCase):
         self.assertEqual(s['status'], 'error')
         self.assertIn('unreachable', s['message'])
 
+    def test_messages_keep_their_template(self):
+        s = sg.templated(sg.status(self.cfg(self.url, 'x' * 32)))
+        self.assertEqual(s['message_t'], ['The worker refused the token.', []])
+        s = sg.templated(sg.status(self.cfg('http://127.0.0.1:9')))
+        self.assertEqual(s['message_t'][0], 'Worker unreachable: %s')
+        self.assertEqual(s['message_t'][0] % tuple(s['message_t'][1]), s['message'])
+        # nested (update), and plain strings get no template
+        out = sg.templated({'collect': {'message': sg.M('Worker error: HTTP %d.', 502)},
+                            'blocklist': {'message': 'plain'}})
+        self.assertEqual(out['collect']['message_t'], ['Worker error: HTTP %d.', [502]])
+        self.assertNotIn('message_t', out['blocklist'])
+        self.assertEqual(json.loads(json.dumps(out))['collect']['message'], 'Worker error: HTTP 502.')
+
 
 class Collect(unittest.TestCase):
     """Collection with a fake Unbound source and the fake worker."""
@@ -255,6 +268,13 @@ class Collect(unittest.TestCase):
         r = sg.collect(self.cfg, missing, self.state)
         self.assertEqual(r['status'], 'error')
         self.assertIn('statistics', r['message'])
+
+        def missing_m(since):
+            raise LookupError(sg.M('Cannot read the Unbound database: %s', 'locked'))
+        sg.collect(self.cfg, missing_m, self.state)
+        # saved for the status page with its template
+        last = sg.last_collect(self.state)
+        self.assertEqual(last['message_t'], ['Cannot read the Unbound database: %s', ['locked']])
 
 
 class Blocklist(unittest.TestCase):
@@ -361,6 +381,7 @@ class Blocklist(unittest.TestCase):
         r = self.run_blocklist()
         self.assertEqual((r['status'], r['blocked']), ('error', 1))
         self.assertIn('previous', r['message'])
+        self.assertEqual(sg.templated(r)['message_t'][0], 'Blocklist not updated, the previous one stays: %s')
         self.assertEqual((self.written(), self.reloads), (['fake-shop.fr'], 1))
         self.cfg['token'] = 'x' * 32
         self.cfg['worker_url'] = self.url

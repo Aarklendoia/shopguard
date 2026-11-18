@@ -30,6 +30,7 @@ namespace OPNsense\ShopGuard\Api;
 
 use OPNsense\Base\ApiControllerBase;
 use OPNsense\Core\Backend;
+use OPNsense\ShopGuard\Lang;
 
 class ServiceController extends ApiControllerBase
 {
@@ -40,7 +41,7 @@ class ServiceController extends ApiControllerBase
     {
         $response = trim((new Backend())->configdRun('shopguard status'));
         $data = json_decode($response, true);
-        return is_array($data) ? $data : ['status' => 'error', 'message' => $response];
+        return is_array($data) ? Lang::messages($data) : ['status' => 'error', 'message' => $response];
     }
 
     /**
@@ -55,6 +56,7 @@ class ServiceController extends ApiControllerBase
         $backend = new Backend();
         $out = trim($backend->configdRun('cron restart'));
         $blocklist = json_decode(trim($backend->configdRun('shopguard blocklist')), true);
+        $blocklist = is_array($blocklist) ? Lang::messages($blocklist) : null;
         $result = ['status' => stripos($out, 'error') === false ? 'ok' : 'failed'];
         if (!is_array($blocklist)) {
             $result['status'] = 'failed';
@@ -69,7 +71,7 @@ class ServiceController extends ApiControllerBase
             $result['pending'] = !empty($blocklist['pending']);
         }
         if ($result['status'] !== 'ok' && empty($result['message']) && stripos($out, 'error') !== false) {
-            $result['message'] = gettext('the cron job could not be updated.');
+            $result['message'] = Lang::_('the cron job could not be updated.');
         }
         return $result;
     }
@@ -98,6 +100,7 @@ class ServiceController extends ApiControllerBase
             $search,
         ]);
         $data = json_decode(trim($response), true);
+        $data = is_array($data) ? Lang::messages($data) : null;
         if (!is_array($data) || ($data['status'] ?? '') !== 'ok') {
             return [
                 'rows' => [], 'rowCount' => 0, 'total' => 0, 'current' => 1,
@@ -124,11 +127,11 @@ class ServiceController extends ApiControllerBase
         $domain = strtolower(trim((string)$this->request->getPost('domain', 'string', '')));
         $label = (string)$this->request->getPost('label', 'string', '');
         if (!preg_match('/^[a-z0-9_.-]{1,253}$/', $domain) || !in_array($label, ['fake', 'legit', 'none'], true)) {
-            return ['status' => 'error', 'message' => gettext('Enter a domain name.')];
+            return ['status' => 'error', 'message' => Lang::_('Enter a domain name.')];
         }
         $response = (new Backend())->configdpRun('shopguard feedback', [$domain, $label]);
         $data = json_decode(trim($response), true);
-        return is_array($data) ? $data : ['status' => 'error', 'message' => trim($response)];
+        return is_array($data) ? Lang::messages($data) : ['status' => 'error', 'message' => trim($response)];
     }
 
     /**
@@ -138,6 +141,6 @@ class ServiceController extends ApiControllerBase
     {
         $response = (new Backend())->configdRun('shopguard labels');
         $data = json_decode(trim($response), true);
-        return is_array($data) ? $data : ['status' => 'error', 'message' => trim($response), 'rows' => []];
+        return is_array($data) ? Lang::messages($data) : ['status' => 'error', 'message' => trim($response), 'rows' => []];
     }
 }
