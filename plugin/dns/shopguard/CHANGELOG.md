@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.3](https://github.com/Aarklendoia/shopguard/compare/plugin-v0.4.2...plugin-v0.4.3) (2026-11-18)
+
+
+### Bug Fixes
+
+* **plugin:** verdict buttons in the domain column ([#72](https://github.com/Aarklendoia/shopguard/issues/72)) ([69356fc](https://github.com/Aarklendoia/shopguard/commit/69356fc91264921ee62755960fb98080f1deb723))
+
 ## [0.4.2](https://github.com/Aarklendoia/shopguard/compare/plugin-v0.4.1...plugin-v0.4.2) (2026-11-18)
 
 
