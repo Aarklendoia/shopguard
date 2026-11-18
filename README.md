@@ -147,8 +147,8 @@ on Shopify). A pull request that changes the scoring shows its effect on them:
 
 ```sh
 cd worker
-cat corpus/*.txt | cargo run -q -- check --json > /tmp/before.jsonl   # on main
-cat corpus/*.txt | cargo run -q -- check --json > /tmp/after.jsonl    # on the branch
+cat corpus/*.txt | cargo run -q -- check --json --jobs 16 > /tmp/before.jsonl  # on main
+cat corpus/*.txt | cargo run -q -- check --json --jobs 16 > /tmp/after.jsonl   # branch
 cargo run -q -- measure corpus /tmp/before.jsonl /tmp/after.jsonl     # Markdown tables
 ```
 

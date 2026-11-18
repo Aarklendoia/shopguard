@@ -6,8 +6,8 @@
 //! scoring change is compared on the same answers:
 //!
 //! ```sh
-//! cat corpus/*.txt | shopguard-worker check --json > before.jsonl   # on main
-//! cat corpus/*.txt | shopguard-worker check --json > after.jsonl    # on the branch
+//! cat corpus/*.txt | shopguard-worker check --json --jobs 16 > before.jsonl  # on main
+//! cat corpus/*.txt | shopguard-worker check --json --jobs 16 > after.jsonl   # branch
 //! shopguard-worker measure corpus before.jsonl after.jsonl
 //! ```
 
