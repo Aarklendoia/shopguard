@@ -248,11 +248,13 @@
                     return response;
                 },
                 formatters: {
-                    // the buttons live in the domain column, the widest one: a column of their
-                    // own came out too narrow whatever width it declared
                     domain: function (column, row) {
-                        return '<span class="pull-right" style="white-space: nowrap; margin-left: 1em;">' +
-                            buttons(row) + '</span>' + esc(row.domain) + decisionBadge(row.feedback);
+                        return esc(row.domain) + decisionBadge(row.feedback);
+                    },
+                    // OPNsense's grid treats the "commands" column like the Actions column
+                    // of its own pages: frozen on the right, width locked
+                    commands: function (column, row) {
+                        return buttons(row);
                     },
                     score: function (column, row) {
                         return '<span class="label label-' + scoreClass(row.score) + '">' + esc(row.score) + '</span>';
@@ -351,6 +353,7 @@
                 <th data-column-id="score" data-type="numeric" data-min-width="70" data-max-width="90" data-formatter="score">{{ lang._('Score') }}</th>
                 <th data-column-id="signals" data-formatter="signals">{{ lang._('Signals') }}</th>
                 <th data-column-id="checked_at" data-min-width="165" data-max-width="200" data-formatter="checked">{{ lang._('Last check') }}</th>
+                <th data-column-id="commands" data-width="110" data-formatter="commands" data-sortable="false">{{ lang._('Actions') }}</th>
             </tr>
         </thead>
         <tbody></tbody>
