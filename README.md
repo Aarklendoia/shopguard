@@ -156,7 +156,9 @@ cargo run -q -- measure corpus /tmp/before.jsonl /tmp/after.jsonl     # Markdown
 above 0 and the fakes under the threshold, and every score that changed. Fake shops die
 within weeks: add recent ones to `fake.txt` (and drop the ones that stop answering) before
 measuring. The network answers (crt.sh, registries) vary between runs: compare scores
-whose signals changed, not the noise.
+whose signals changed, not the noise. A run takes hours rather than minutes: the free
+services (crt.sh, Cert Spotter, RDAP servers, VIES) are queried one request at a time and
+spaced, whatever `--jobs` says, which only parallelizes the rest (pages, certificates).
 
 ## Plugin
 
