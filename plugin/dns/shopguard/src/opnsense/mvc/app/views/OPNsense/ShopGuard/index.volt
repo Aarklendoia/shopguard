@@ -41,7 +41,8 @@
                     $('#st_pending').text('');
                 }
                 if (data.mode === 'block') {
-                    $('#st_blocked').text(data.blocked + ' {{ lang._('domains blocked in Unbound') }}');
+                    $('#st_blocked').text(data.blocked + ' {{ lang._('domains blocked in Unbound') }}' +
+                        (data.applying ? ' ({{ lang._('being applied') }}…)' : ''));
                 } else if (data.mode === 'observe') {
                     $('#st_blocked').text('{{ lang._('Observe only: nothing blocked') }}');
                 } else {
@@ -86,7 +87,8 @@
                             (data.message || '{{ lang._('the blocklist could not be updated.') }}'));
                     } else if (data.mode === 'block') {
                         applied('success', '{{ lang._('Settings applied:') }} ' + data.blocked +
-                            ' {{ lang._('domains blocked in Unbound.') }}');
+                            ' {{ lang._('domains blocked in Unbound.') }}' +
+                            (data.pending ? ' {{ lang._('Unbound applies the changes within 1 to 2 minutes.') }}' : ''));
                     } else if (data.mode === 'observe') {
                         applied('success', '{{ lang._('Settings applied: observe only, nothing is blocked.') }}');
                     } else {
@@ -118,12 +120,33 @@
         }
 
         // the user's decision on a domain: fake (always blocked), legit (never), none
-        function decide(domain, label) {
+        // a decision is saved in a second or two (Unbound rebuilds its blocklists in the
+        // background): the buttons wait with a spinner, one decision at a time
+        function deciding(on, button) {
+            $('.verdict-decide, #decide_fake, #decide_legit, .decision-forget').prop('disabled', on);
+            $('#decide_progress, #decide_progress_grid').toggle(on);
+            // the clicked button itself turns into a spinner: it is where the user looks
+            var icon = button ? $(button).find('.fa').first() : $();
+            if (on) {
+                icon.data('icon', icon.attr('class')).attr('class', 'fa fa-fw fa-spinner fa-pulse');
+            } else if (icon.data('icon')) {
+                icon.attr('class', icon.data('icon'));
+            }
+        }
+
+        function decide(domain, label, button) {
+            deciding(true, button);
             ajaxCall('/api/shopguard/service/feedback', {domain: domain, label: label}, function (data) {
+                deciding(false, button);
                 if (data.status !== 'ok') {
                     warn(data.message || '{{ lang._('The decision was not saved.') }}');
                 } else if (data.message) {
                     warn(data.message);
+                } else {
+                    var text = data.pending
+                        ? '{{ lang._('Saved. Unbound applies it within 1 to 2 minutes.') }}'
+                        : '{{ lang._('Saved.') }}';
+                    $('#decide_info, #decide_info_grid').text(text).stop(true, true).show().delay(8000).fadeOut();
                 }
                 $('#grid-verdicts').bootgrid('reload');
                 loadLabels();
@@ -155,7 +178,8 @@
                             $('<button type="button" class="btn btn-xs btn-default"/>')
                                 .attr('title', '{{ lang._('Forget the decision') }}')
                                 .append('<span class="fa fa-fw fa-undo"></span>')
-                                .on('click', function () { decide(r.domain, 'none'); })
+                                .addClass('decision-forget')
+                                .on('click', function () { decide(r.domain, 'none', this); })
                         ))
                         .appendTo(body);
                 });
@@ -169,7 +193,7 @@
         $('#decide_fake, #decide_legit').click(function () {
             var domain = $.trim($('#decide_domain').val()).toLowerCase();
             if (!domain) return;
-            decide(domain, this.id === 'decide_fake' ? 'fake' : 'legit');
+            decide(domain, this.id === 'decide_fake' ? 'fake' : 'legit', this);
             $('#decide_domain').val('');
         });
 
@@ -189,17 +213,17 @@
 
         function buttons(row) {
             var id = ' data-row-id="' + esc(row.domain) + '"';
-            var out = '<button type="button" class="btn btn-xs btn-default verdict-details"' + id +
+            var out = '<button type="button" class="btn btn-xs btn-default bootgrid-tooltip verdict-details"' + id +
                 ' title="{{ lang._('Signals') }}"><span class="fa fa-fw fa-info-circle"></span></button> ';
             if (row.feedback) {
-                return out + '<button type="button" class="btn btn-xs btn-default verdict-decide"' + id +
+                return out + '<button type="button" class="btn btn-xs btn-default bootgrid-tooltip verdict-decide"' + id +
                     ' data-label="none" title="{{ lang._('Forget the decision') }}"><span class="fa fa-fw fa-undo"></span></button>';
             }
             return out +
-                '<button type="button" class="btn btn-xs btn-default verdict-decide"' + id +
-                ' data-label="legit" title="{{ lang._('Legitimate: never block') }}"><span class="fa fa-fw fa-thumbs-up"></span></button> ' +
-                '<button type="button" class="btn btn-xs btn-default verdict-decide"' + id +
-                ' data-label="fake" title="{{ lang._('Fake shop: always block') }}"><span class="fa fa-fw fa-thumbs-down"></span></button>';
+                '<button type="button" class="btn btn-xs btn-default bootgrid-tooltip verdict-decide"' + id +
+                ' data-label="legit" title="{{ lang._('Legitimate: never block') }}"><span class="fa fa-fw fa-check"></span></button> ' +
+                '<button type="button" class="btn btn-xs btn-default bootgrid-tooltip verdict-decide"' + id +
+                ' data-label="fake" title="{{ lang._('Fake shop: always block') }}"><span class="fa fa-fw fa-ban"></span></button>';
         }
 
         function scoreClass(score) {
@@ -224,11 +248,13 @@
                     return response;
                 },
                 formatters: {
-                    // the buttons live in the domain column, the widest one: a column of their
-                    // own came out too narrow whatever width it declared
                     domain: function (column, row) {
-                        return '<span class="pull-right" style="white-space: nowrap; margin-left: 1em;">' +
-                            buttons(row) + '</span>' + esc(row.domain) + decisionBadge(row.feedback);
+                        return esc(row.domain) + decisionBadge(row.feedback);
+                    },
+                    // OPNsense's grid treats the "commands" column like the Actions column
+                    // of its own pages: frozen on the right, width locked
+                    commands: function (column, row) {
+                        return buttons(row);
                     },
                     score: function (column, row) {
                         return '<span class="label label-' + scoreClass(row.score) + '">' + esc(row.score) + '</span>';
@@ -246,7 +272,7 @@
         }).on('loaded.rs.jquery.bootgrid', function () {
             var rows = $(this).bootgrid('getCurrentRows');
             $(this).find('.verdict-decide').off('click').on('click', function () {
-                decide($(this).data('row-id'), $(this).data('label'));
+                decide($(this).data('row-id'), $(this).data('label'), this);
             });
             $(this).find('.verdict-details').off('click').on('click', function () {
                 var domain = $(this).data('row-id');
@@ -317,6 +343,8 @@
             <option value="{{ threshold }}">{{ threshold }} ({{ lang._('blocking threshold') }})</option>
         </select>
         <span id="verdicts_message" class="text-danger" style="margin-left: 1em; display: none;"></span>
+        <span id="decide_progress_grid" style="margin-left: 1em; display: none;"><i class="fa fa-spinner fa-pulse"></i> {{ lang._('Saving…') }}</span>
+        <span id="decide_info_grid" class="text-success" style="margin-left: 1em; display: none;"></span>
     </div>
     <table id="grid-verdicts" class="table table-condensed table-hover table-striped">
         <thead>
@@ -325,6 +353,7 @@
                 <th data-column-id="score" data-type="numeric" data-min-width="70" data-max-width="90" data-formatter="score">{{ lang._('Score') }}</th>
                 <th data-column-id="signals" data-formatter="signals">{{ lang._('Signals') }}</th>
                 <th data-column-id="checked_at" data-min-width="165" data-max-width="200" data-formatter="checked">{{ lang._('Last check') }}</th>
+                <th data-column-id="commands" data-width="110" data-formatter="commands" data-sortable="false">{{ lang._('Actions') }}</th>
             </tr>
         </thead>
         <tbody></tbody>
@@ -336,8 +365,10 @@
         <p>{{ lang._('Your decisions override the score: a domain marked fake is always blocked (in Block mode), one marked legitimate never is. They are kept by the worker, which also uses them to improve its scoring.') }}</p>
         <div class="form-inline">
             <input type="text" id="decide_domain" class="form-control" placeholder="example-shop.com" style="width: 20em;"/>
-            <button type="button" id="decide_fake" class="btn btn-danger"><span class="fa fa-fw fa-thumbs-down"></span> {{ lang._('Fake shop') }}</button>
-            <button type="button" id="decide_legit" class="btn btn-success"><span class="fa fa-fw fa-thumbs-up"></span> {{ lang._('Legitimate') }}</button>
+            <button type="button" id="decide_fake" class="btn btn-danger"><span class="fa fa-fw fa-ban"></span> {{ lang._('Fake shop') }}</button>
+            <button type="button" id="decide_legit" class="btn btn-success"><span class="fa fa-fw fa-check"></span> {{ lang._('Legitimate') }}</button>
+            <span id="decide_progress" style="display: none;"><i class="fa fa-spinner fa-pulse"></i> {{ lang._('Saving…') }}</span>
+            <span id="decide_info" class="text-success" style="display: none;"></span>
             <button type="button" id="export_fake" class="btn btn-default pull-right" disabled="disabled"
                     title="{{ lang._('One domain per line, to report them (HaGeZi, Signal Arnaques)') }}">
                 <span class="fa fa-fw fa-download"></span> {{ lang._('Export the fake shops') }}</button>

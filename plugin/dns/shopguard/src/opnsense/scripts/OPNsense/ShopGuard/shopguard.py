@@ -30,11 +30,14 @@
         shopguard.py status     worker reachability and last collection, as JSON
         shopguard.py collect    send the worker the new domains resolved by Unbound
         shopguard.py blocklist  in Block mode, the domains scoring at least the threshold
-                                for Unbound (blocklist.json, read by shopguard_bl.py)
-        shopguard.py update     collect, then blocklist (cron, every 5 minutes)
+                                for Unbound (blocklist.json, read by shopguard_bl.py),
+                                given to Unbound in the background
+        shopguard.py apply      give Unbound the blocklist when it changed: rebuild its
+                                blocklists, flush the changed domains from its cache
+        shopguard.py update     collect, then blocklist and apply (cron, every 5 minutes)
         shopguard.py feedback <domain> <fake|legit|none>
                                 the user's decision on a domain (worker 0.9+), then
-                                the blocklist right away
+                                the blocklist right away (applied in the background)
         shopguard.py labels     every domain with a decision, as JSON
         shopguard.py verdicts <min_score> <offset> <limit> [search]
                                 one page of verdicts, highest score first, as JSON
@@ -83,6 +86,8 @@ SEARCH = re.compile(r'^[a-z0-9_.-]{0,253}$')
 MAX_PAGE = 1000
 # read by the Unbound blocklist handler (scripts/unbound/blocklists/shopguard_bl.py)
 BLOCKLIST = 'blocklist.json'
+# what Unbound was last given: the difference is applied (and its cache flushed)
+APPLIED = 'applied.json'
 # most domains blocked: a broken or hostile worker cannot inflate Unbound's memory
 BLOCK_MAX = 100000
 DNSBL_RELOAD = ['/usr/local/sbin/configctl', 'unbound', 'dnsbl']
@@ -91,6 +96,9 @@ DNSBL_RELOAD = ['/usr/local/sbin/configctl', 'unbound', 'dnsbl']
 UNBOUND_FLUSH = ['/usr/local/sbin/unbound-control', '-c', '/var/unbound/unbound.conf', 'flush_zone']
 # most domains flushed in one run (one unbound-control call each)
 FLUSH_MAX = 500
+# Unbound's blocklist module reads a new list at most once a minute, on a query: the
+# domains are flushed again this long after the reload, in a detached process
+FLUSH_AGAIN_AFTER = 75
 
 
 def settings(path=CONFIG):
@@ -358,14 +366,11 @@ def blocked_domains(cfg):
     return sorted(domains)[:BLOCK_MAX]
 
 
-def blocklist(cfg, state_dir=STATE_DIR, reload=None, now=None, flush=None):
-    """Writes the domains Unbound must block and reloads its blocklists when they changed.
+def blocklist(cfg, state_dir=STATE_DIR, now=None, apply=None):
+    """Writes the domains Unbound must block; when they differ from what Unbound has,
+    `apply` (default: `apply_later`, in the background) gives them to Unbound.
 
     Observe mode, or ShopGuard disabled: the list is emptied (nothing blocked).
-
-    The domains added or removed are flushed from Unbound's cache, and once more on the next
-    run: the blocklist module reads the new list up to a minute later, and a query in
-    between would cache the answer again.
     """
     now = int(now if now is not None else time.time())
     os.makedirs(state_dir, mode=0o700, exist_ok=True)
@@ -383,32 +388,72 @@ def blocklist(cfg, state_dir=STATE_DIR, reload=None, now=None, flush=None):
             message = 'Blocklist not updated, the previous one stays: %s' % getattr(e, 'reason', e)
             syslog.syslog(syslog.LOG_ERR, 'shopguard blocklist: %s' % message)
             return {'status': 'error', 'message': message, 'blocked': len(old.get('domains', []))}
-    previous = old.get('domains', [])
-    changed = domains != previous
-    diff = sorted(set(domains) ^ set(previous))
-    again = [d for d in old.get('flush', []) if isinstance(d, str)]
-    if changed or again or not os.path.exists(path):
+    changed = domains != old.get('domains', [])
+    if changed or not os.path.exists(path):
         # read by Unbound's blocklist script, which runs as root like this one
-        save_json(path, {'domains': domains, 'threshold': cfg['threshold'], 'time': now,
-                         'flush': diff[:FLUSH_MAX]})
-    if changed:
-        (reload or reload_unbound)()
-        syslog.syslog(syslog.LOG_NOTICE, 'shopguard blocklist: %d domains blocked' % len(domains))
-    to_flush = sorted(set(diff) | set(again))[:FLUSH_MAX]
-    if to_flush:
-        (flush or flush_unbound)(to_flush)
-    return {'status': 'ok', 'blocked': len(domains), 'changed': changed,
+        save_json(path, {'domains': domains, 'threshold': cfg['threshold'], 'time': now})
+    pending = domains != applied_domains(state_dir)
+    if pending:
+        (apply or apply_later)(state_dir)
+    return {'status': 'ok', 'blocked': len(domains), 'changed': changed, 'pending': pending,
             'mode': 'block' if blocking else ('observe' if cfg['enabled'] else 'disabled')}
 
 
+def applied_domains(state_dir=STATE_DIR):
+    """The domains Unbound was last given (none before the first time)."""
+    return load_json(os.path.join(state_dir, APPLIED), {}).get('domains', [])
+
+
+def apply_later(state_dir=STATE_DIR):
+    """`apply_now` in a detached process: rebuilding Unbound's blocklists takes tens of
+    seconds with big lists, the page answers at once."""
+    try:
+        subprocess.Popen(['/usr/sbin/daemon', '-f', os.path.abspath(__file__), 'apply'],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError as e:
+        syslog.syslog(syslog.LOG_ERR, 'shopguard apply: %s' % e)
+
+
+def apply_now(state_dir=STATE_DIR, reload=None, flush=None, now=None):
+    """Gives Unbound the current blocklist: rebuilds its blocklists, then flushes the cached
+    answers of the domains added or removed. One run at a time; a list changed during a
+    rebuild is applied by the same run. Returns how many rebuilds were done."""
+    os.makedirs(state_dir, mode=0o700, exist_ok=True)
+    with open(os.path.join(state_dir, 'apply.lock'), 'w') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        rebuilds = 0
+        while rebuilds < 5:
+            target = load_json(os.path.join(state_dir, BLOCKLIST), {}).get('domains', [])
+            applied = applied_domains(state_dir)
+            if target == applied:
+                break
+            (reload or reload_unbound)()
+            rebuilds += 1
+            diff = sorted(set(target) ^ set(applied))[:FLUSH_MAX]
+            if diff:
+                (flush or flush_unbound)(diff)
+            save_json(os.path.join(state_dir, APPLIED),
+                      {'domains': target, 'time': int(now if now is not None else time.time())})
+            syslog.syslog(syslog.LOG_NOTICE, 'shopguard blocklist: %d domains blocked' % len(target))
+        return rebuilds
+
+
 def flush_unbound(names):
-    """Drops the cached answers of `names` and their subdomains."""
+    """Drops the cached answers of `names` and their subdomains, now and once more when the
+    blocklist module has read the new list (a query in between caches the answer again)."""
     for name in names:
         try:
             subprocess.run(UNBOUND_FLUSH + [name], check=False, timeout=10,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except (OSError, subprocess.SubprocessError):
             return
+    # names are checked public domain names (public_name), passed as arguments, not code
+    script = 'sleep %d; for d in "$@"; do %s "$d"; done' % (FLUSH_AGAIN_AFTER, ' '.join(UNBOUND_FLUSH))
+    try:
+        subprocess.Popen(['/usr/sbin/daemon', '-f', '/bin/sh', '-c', script, 'shopguard-flush'] + list(names),
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        pass
 
 
 def reload_unbound():
@@ -431,7 +476,7 @@ def worker_error(e):
     return 'Worker unreachable: %s' % getattr(e, 'reason', e)
 
 
-def feedback(cfg, domain, label, state_dir=STATE_DIR, reload=None, flush=None):
+def feedback(cfg, domain, label, state_dir=STATE_DIR, apply=None):
     """Sends the user's decision on `domain` (fake, legit, or none to forget it), then
     updates the blocklist so that it applies at once."""
     name = public_name(domain)
@@ -449,9 +494,9 @@ def feedback(cfg, domain, label, state_dir=STATE_DIR, reload=None, flush=None):
         return {'status': 'error', 'message': worker_error(e)}
     except (urllib.error.URLError, OSError, ValueError) as e:
         return {'status': 'error', 'message': worker_error(e)}
-    b = blocklist(cfg, state_dir, reload, flush=flush) if cfg['enabled'] else {'status': 'ok', 'blocked': 0}
+    b = blocklist(cfg, state_dir, apply=apply) if cfg['enabled'] else {'status': 'ok', 'blocked': 0}
     out = {'status': 'ok', 'domain': r.get('domain', name), 'label': r.get('label'),
-           'queued': bool(r.get('queued')), 'blocked': b.get('blocked', 0)}
+           'queued': bool(r.get('queued')), 'blocked': b.get('blocked', 0), 'pending': bool(b.get('pending'))}
     if b['status'] != 'ok':
         out['message'] = b['message']
     return out
@@ -488,9 +533,12 @@ def last_collect(state_dir=STATE_DIR):
 
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else ''
-    if cmd not in ('status', 'collect', 'blocklist', 'update', 'verdicts', 'feedback', 'labels'):
-        print('usage: shopguard.py status|collect|blocklist|update|verdicts|feedback|labels', file=sys.stderr)
+    if cmd not in ('status', 'collect', 'blocklist', 'apply', 'update', 'verdicts', 'feedback', 'labels'):
+        print('usage: shopguard.py status|collect|blocklist|apply|update|verdicts|feedback|labels', file=sys.stderr)
         return 2
+    if cmd == 'apply':
+        print(json.dumps({'status': 'ok', 'rebuilds': apply_now()}))
+        return 0
     try:
         cfg = settings()
     except (OSError, ET.ParseError) as e:
@@ -513,6 +561,8 @@ def main(argv):
         out['collect'] = last_collect()
         out['mode'] = cfg['mode'] if cfg['enabled'] else 'disabled'
         out['blocked'] = blocked_count()
+        # not given to Unbound yet: a rebuild is running or waits for the cron
+        out['applying'] = load_json(os.path.join(STATE_DIR, BLOCKLIST), {}).get('domains', []) != applied_domains()
         print(json.dumps(out))
         return 0
     if cmd == 'feedback':
@@ -532,7 +582,8 @@ def main(argv):
         return 0 if out['status'] == 'ok' else 1
     out = collect(cfg, local=local_domain())
     if cmd == 'update':
-        out = {'collect': out, 'blocklist': blocklist(cfg)}
+        # the cron job: applied here, and catches up with a background run that failed
+        out = {'collect': out, 'blocklist': blocklist(cfg, apply=apply_now)}
         print(json.dumps(out))
         return 0 if out['blocklist']['status'] == 'ok' and \
             out['collect']['status'] in ('ok', 'disabled', 'busy') else 1
