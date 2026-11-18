@@ -41,7 +41,8 @@
                     $('#st_pending').text('');
                 }
                 if (data.mode === 'block') {
-                    $('#st_blocked').text(data.blocked + ' {{ lang._('domains blocked in Unbound') }}');
+                    $('#st_blocked').text(data.blocked + ' {{ lang._('domains blocked in Unbound') }}' +
+                        (data.applying ? ' ({{ lang._('being applied') }}…)' : ''));
                 } else if (data.mode === 'observe') {
                     $('#st_blocked').text('{{ lang._('Observe only: nothing blocked') }}');
                 } else {
@@ -86,7 +87,8 @@
                             (data.message || '{{ lang._('the blocklist could not be updated.') }}'));
                     } else if (data.mode === 'block') {
                         applied('success', '{{ lang._('Settings applied:') }} ' + data.blocked +
-                            ' {{ lang._('domains blocked in Unbound.') }}');
+                            ' {{ lang._('domains blocked in Unbound.') }}' +
+                            (data.pending ? ' {{ lang._('Unbound applies the changes within 1 to 2 minutes.') }}' : ''));
                     } else if (data.mode === 'observe') {
                         applied('success', '{{ lang._('Settings applied: observe only, nothing is blocked.') }}');
                     } else {
@@ -118,8 +120,8 @@
         }
 
         // the user's decision on a domain: fake (always blocked), legit (never), none
-        // Unbound rebuilds its whole blocklist (tens of seconds with big lists): the decision
-        // buttons wait with a spinner, one decision at a time
+        // a decision is saved in a second or two (Unbound rebuilds its blocklists in the
+        // background): the buttons wait with a spinner, one decision at a time
         function deciding(on, button) {
             $('.verdict-decide, #decide_fake, #decide_legit, .decision-forget').prop('disabled', on);
             $('#decide_progress, #decide_progress_grid').toggle(on);
@@ -140,6 +142,11 @@
                     warn(data.message || '{{ lang._('The decision was not saved.') }}');
                 } else if (data.message) {
                     warn(data.message);
+                } else {
+                    var text = data.pending
+                        ? '{{ lang._('Saved. Unbound applies it within 1 to 2 minutes.') }}'
+                        : '{{ lang._('Saved.') }}';
+                    $('#decide_info, #decide_info_grid').text(text).stop(true, true).show().delay(8000).fadeOut();
                 }
                 $('#grid-verdicts').bootgrid('reload');
                 loadLabels();
@@ -334,7 +341,8 @@
             <option value="{{ threshold }}">{{ threshold }} ({{ lang._('blocking threshold') }})</option>
         </select>
         <span id="verdicts_message" class="text-danger" style="margin-left: 1em; display: none;"></span>
-        <span id="decide_progress_grid" style="margin-left: 1em; display: none;"><i class="fa fa-spinner fa-pulse"></i> {{ lang._('Updating the Unbound blocklist…') }}</span>
+        <span id="decide_progress_grid" style="margin-left: 1em; display: none;"><i class="fa fa-spinner fa-pulse"></i> {{ lang._('Saving…') }}</span>
+        <span id="decide_info_grid" class="text-success" style="margin-left: 1em; display: none;"></span>
     </div>
     <table id="grid-verdicts" class="table table-condensed table-hover table-striped">
         <thead>
@@ -356,7 +364,8 @@
             <input type="text" id="decide_domain" class="form-control" placeholder="example-shop.com" style="width: 20em;"/>
             <button type="button" id="decide_fake" class="btn btn-danger"><span class="fa fa-fw fa-thumbs-down"></span> {{ lang._('Fake shop') }}</button>
             <button type="button" id="decide_legit" class="btn btn-success"><span class="fa fa-fw fa-thumbs-up"></span> {{ lang._('Legitimate') }}</button>
-            <span id="decide_progress" style="display: none;"><i class="fa fa-spinner fa-pulse"></i> {{ lang._('Updating the Unbound blocklist…') }}</span>
+            <span id="decide_progress" style="display: none;"><i class="fa fa-spinner fa-pulse"></i> {{ lang._('Saving…') }}</span>
+            <span id="decide_info" class="text-success" style="display: none;"></span>
             <button type="button" id="export_fake" class="btn btn-default pull-right" disabled="disabled"
                     title="{{ lang._('One domain per line, to report them (HaGeZi, Signal Arnaques)') }}">
                 <span class="fa fa-fw fa-download"></span> {{ lang._('Export the fake shops') }}</button>

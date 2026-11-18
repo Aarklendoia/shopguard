@@ -65,6 +65,8 @@ class ServiceController extends ApiControllerBase
             // shown after Apply: "N domains blocked", "observe only" or "disabled"
             $result['mode'] = $blocklist['mode'] ?? '';
             $result['blocked'] = (int)($blocklist['blocked'] ?? 0);
+            // given to Unbound in the background (tens of seconds with big lists)
+            $result['pending'] = !empty($blocklist['pending']);
         }
         if ($result['status'] !== 'ok' && empty($result['message']) && stripos($out, 'error') !== false) {
             $result['message'] = gettext('the cron job could not be updated.');
