@@ -227,20 +227,37 @@
                 var domain = $(this).data('row-id');
                 var row = rows.filter(function (r) { return r.domain === domain; })[0];
                 if (!row) return;
-                var table = $('<table class="table table-condensed"/>');
-                $('<tr/>')
-                    .append($('<th/>').text('{{ lang._('Analyzer') }}'))
-                    .append($('<th/>').text('{{ lang._('Signal') }}'))
-                    .append($('<th/>').text('{{ lang._('Weight') }}'))
+                // thead/tbody: Bootstrap styles the cells only inside them
+                var table = $('<table class="table table-condensed table-striped"/>');
+                $('<thead/>').append($('<tr/>')
+                    .append($('<th style="width: 5em; text-align: right;"/>').text('{{ lang._('Weight') }}'))
+                    .append($('<th style="width: 1%; white-space: nowrap;"/>').text('{{ lang._('Signal') }}'))
                     .append($('<th/>').text('{{ lang._('Detail') }}'))
-                    .appendTo(table);
-                (row.signals || []).forEach(function (s) {
-                    $('<tr/>')
-                        .append($('<td/>').text(s.source))
-                        .append($('<td/>').text(s.name))
-                        .append($('<td/>').text((s.weight > 0 ? '+' : '') + s.weight))
+                ).appendTo(table);
+                var body = $('<tbody/>').appendTo(table);
+                // what makes the score first, the record (weight 0) after, greyed
+                var signals = (row.signals || []).slice().sort(function (a, b) {
+                    return (b.weight !== 0) - (a.weight !== 0) || b.weight - a.weight;
+                });
+                signals.forEach(function (s) {
+                    var weight = $('<td style="text-align: right; white-space: nowrap;"/>');
+                    if (s.weight > 0) {
+                        weight.append($('<span class="label label-danger"/>').text('+' + s.weight));
+                    } else if (s.weight < 0) {
+                        weight.append($('<span class="label label-success"/>').text(s.weight));
+                    } else {
+                        weight.text('0');
+                    }
+                    var tr = $('<tr/>')
+                        .append(weight)
+                        .append($('<td style="white-space: nowrap;"/>')
+                            .append($('<div/>').text(s.name))
+                            .append($('<small class="text-muted"/>').text(s.source)))
                         .append($('<td/>').text(s.detail))
-                        .appendTo(table);
+                        .appendTo(body);
+                    if (s.weight === 0) {
+                        tr.addClass('text-muted');
+                    }
                 });
                 BootstrapDialog.show({
                     title: $('<span/>').text(row.domain + ' — {{ lang._('score') }} ' + row.score),
