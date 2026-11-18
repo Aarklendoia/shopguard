@@ -7,6 +7,10 @@
 //!
 //! Without a data directory the store lives in memory only.
 //!
+//! Feedback from the user ("this is a fake shop", "this is legitimate") is kept with the
+//! domain: it overrides the score ([`effective_score`]), the domain is never evicted, and
+//! the labelled verdicts are the data to tune the weights with.
+//!
 //! Domains received but not analyzed yet are persisted too: the plugin sends each domain
 //! once, a restart must not lose them. Verdicts expire ([`ttl`]) and are analyzed again,
 //! since fake shops change fast. Past `cap` domains, the least recently seen are evicted.
@@ -49,6 +53,47 @@ pub fn now() -> u64 {
         .unwrap_or(0)
 }
 
+/// What the user says a domain is.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Label {
+    Fake,
+    Legit,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Feedback {
+    pub label: Label,
+    /// Unix time of the decision.
+    pub at: u64,
+}
+
+/// The score that decides: 100 for a domain the user says is fake, 0 for one they say is
+/// legitimate, else the computed one.
+pub fn effective_score(score: u8, feedback: Option<Feedback>) -> u8 {
+    match feedback.map(|f| f.label) {
+        Some(Label::Fake) => 100,
+        Some(Label::Legit) => 0,
+        None => score,
+    }
+}
+
+/// A verdict with the user's feedback. A domain labelled before its first analysis has
+/// an empty verdict (score 0, no signals, `checked_at` 0).
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct Listed {
+    #[serde(flatten)]
+    pub verdict: Verdict,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feedback: Option<Feedback>,
+}
+
+impl Listed {
+    pub fn effective_score(&self) -> u8 {
+        effective_score(self.verdict.score, self.feedback)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 struct Entry {
     domain: String,
@@ -56,6 +101,28 @@ struct Entry {
     last_seen: u64,
     /// `None` until the first analysis.
     verdict: Option<Verdict>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    feedback: Option<Feedback>,
+}
+
+impl Entry {
+    /// Shown in the lists: analyzed, or labelled by the user.
+    fn listed(&self) -> Option<Listed> {
+        let verdict = match (&self.verdict, self.feedback) {
+            (Some(v), _) => v.clone(),
+            (None, Some(_)) => Verdict {
+                domain: self.domain.clone(),
+                score: 0,
+                signals: Vec::new(),
+                checked_at: 0,
+            },
+            (None, None) => return None,
+        };
+        Some(Listed {
+            verdict,
+            feedback: self.feedback,
+        })
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -210,7 +277,8 @@ impl Store {
         let mut by_age: Vec<(u64, String)> = inner
             .entries
             .values()
-            .filter(|e| !inner.queued.contains(&e.domain))
+            // the user's decisions stay
+            .filter(|e| !inner.queued.contains(&e.domain) && e.feedback.is_none())
             .map(|e| (e.last_seen, e.domain.clone()))
             .collect();
         by_age.sort_unstable();
@@ -236,6 +304,7 @@ impl Store {
             domain: domain.to_owned(),
             last_seen: now,
             verdict: None,
+            feedback: None,
         };
         inner.entries.insert(domain.to_owned(), entry.clone());
         inner.queued.insert(domain.to_owned());
@@ -274,6 +343,7 @@ impl Store {
                     domain: verdict.domain.clone(),
                     last_seen: now(),
                     verdict: Some(verdict),
+                    feedback: None,
                 };
                 inner.entries.insert(e.domain.clone(), e.clone());
                 e
@@ -314,27 +384,80 @@ impl Store {
         self.inner.write().await.queued.remove(domain);
     }
 
-    pub async fn get(&self, domain: &str) -> Option<Verdict> {
+    pub async fn get(&self, domain: &str) -> Option<Listed> {
         self.inner
             .read()
             .await
             .entries
             .get(domain)
-            .and_then(|e| e.verdict.clone())
+            .and_then(Entry::listed)
     }
 
-    /// Verdicts with a score of at least `min_score`, highest score first.
-    pub async fn verdicts(&self, min_score: u8) -> Vec<Verdict> {
-        let mut v: Vec<Verdict> = self
+    /// Verdicts whose [effective score](effective_score) is at least `min_score`, highest
+    /// first.
+    pub async fn verdicts(&self, min_score: u8) -> Vec<Listed> {
+        let mut v: Vec<Listed> = self
             .inner
             .read()
             .await
             .entries
             .values()
-            .filter_map(|e| e.verdict.clone())
-            .filter(|v| v.score >= min_score)
+            .filter_map(Entry::listed)
+            .filter(|l| l.effective_score() >= min_score)
             .collect();
-        v.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.domain.cmp(&b.domain)));
+        v.sort_by(|a, b| {
+            b.effective_score()
+                .cmp(&a.effective_score())
+                .then_with(|| a.verdict.domain.cmp(&b.verdict.domain))
+        });
+        v
+    }
+
+    /// Sets (or clears, with `None`) the user's feedback on `domain`. True when the domain
+    /// was not known: it counts as queued, the caller queues it for analysis (or calls
+    /// [`Store::release`] to leave it to the scheduler).
+    pub async fn set_feedback(&self, domain: &str, label: Option<Label>) -> bool {
+        let mut inner = self.inner.write().await;
+        let now = now();
+        let feedback = label.map(|label| Feedback { label, at: now });
+        let new = !inner.entries.contains_key(domain);
+        if new {
+            if feedback.is_none() {
+                return false;
+            }
+            inner.entries.insert(
+                domain.to_owned(),
+                Entry {
+                    domain: domain.to_owned(),
+                    last_seen: now,
+                    verdict: None,
+                    feedback: None,
+                },
+            );
+            inner.queued.insert(domain.to_owned());
+        }
+        let entry = inner.entries.get_mut(domain).expect("inserted above");
+        entry.feedback = feedback;
+        let entry = entry.clone();
+        for d in self.evict(&mut inner) {
+            self.persist(&inner, Record::Del { domain: d });
+        }
+        self.persist(&inner, Record::Put(entry));
+        new
+    }
+
+    /// Every labelled domain, by domain name.
+    pub async fn feedback(&self) -> Vec<Listed> {
+        let mut v: Vec<Listed> = self
+            .inner
+            .read()
+            .await
+            .entries
+            .values()
+            .filter(|e| e.feedback.is_some())
+            .filter_map(Entry::listed)
+            .collect();
+        v.sort_by(|a, b| a.verdict.domain.cmp(&b.verdict.domain));
         v
     }
 
@@ -417,7 +540,7 @@ mod tests {
 
         let s = Store::open(&dir.0, 10).unwrap();
         assert_eq!(s.len().await, 2);
-        assert_eq!(s.get("a.fr").await.unwrap().score, 80);
+        assert_eq!(s.get("a.fr").await.unwrap().verdict.score, 80);
         assert_eq!(s.get("b.fr").await, None);
         assert_eq!(s.pending().await, 1);
         assert!(!s.mark_seen("b.fr").await, "still known after the restart");
@@ -473,6 +596,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn feedback_is_kept_and_never_evicted() {
+        let dir = TempDir::new("feedback");
+        let s = Store::open(&dir.0, 3).unwrap();
+        s.mark_seen("real.fr").await;
+        s.insert(verdict("real.fr", 80, now())).await;
+        assert!(!s.set_feedback("real.fr", Some(Label::Legit)).await);
+        // labelled before any analysis: listed with an empty verdict, queued
+        assert!(s.set_feedback("fake.shop", Some(Label::Fake)).await);
+        let l = s.get("fake.shop").await.unwrap();
+        assert_eq!((l.verdict.score, l.effective_score()), (0, 100));
+        assert_eq!(s.due(now(), 10).await, Vec::<String>::new(), "queued");
+        // forgetting an unknown domain creates nothing
+        assert!(!s.set_feedback("other.fr", None).await);
+        assert_eq!(s.get("other.fr").await, None);
+        let order: Vec<String> = s
+            .verdicts(0)
+            .await
+            .into_iter()
+            .map(|l| l.verdict.domain)
+            .collect();
+        assert_eq!(order, ["fake.shop", "real.fr"]);
+        assert_eq!(s.verdicts(70).await.len(), 1);
+        // a full store evicts the others first
+        for d in ["a.fr", "b.fr", "c.fr", "d.fr"] {
+            s.mark_seen(d).await;
+            s.insert(verdict(d, 0, now())).await;
+        }
+        assert!(s.get("real.fr").await.is_some() && s.get("fake.shop").await.is_some());
+        drop(s);
+        let s = Store::open(&dir.0, 3).unwrap();
+        let fb: Vec<(String, Label)> = s
+            .feedback()
+            .await
+            .into_iter()
+            .map(|l| (l.verdict.domain, l.feedback.unwrap().label))
+            .collect();
+        assert_eq!(
+            fb,
+            [
+                ("fake.shop".into(), Label::Fake),
+                ("real.fr".into(), Label::Legit)
+            ]
+        );
+        s.set_feedback("real.fr", None).await;
+        assert_eq!(s.get("real.fr").await.unwrap().effective_score(), 80);
+    }
+
+    #[tokio::test]
     async fn compacts_a_growing_file() {
         let dir = TempDir::new("compact");
         let s = Store::open(&dir.0, 10).unwrap();
@@ -487,6 +658,6 @@ mod tests {
         assert!(lines < 100, "{lines} lines");
         drop(s);
         let s = Store::open(&dir.0, 10).unwrap();
-        assert_eq!(s.get("a.fr").await.unwrap().checked_at, 10_009);
+        assert_eq!(s.get("a.fr").await.unwrap().verdict.checked_at, 10_009);
     }
 }

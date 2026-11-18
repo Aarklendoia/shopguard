@@ -119,11 +119,20 @@ cargo run --release -- check example-shop.fr
 | GET    | `/v1/verdicts`          | verdicts, highest score first (see below)       |
 | GET    | `/v1/verdicts/{domain}` | one verdict, with its signals                   |
 | GET    | `/v1/blocklist`         | domains scoring at least the threshold, as text |
+| POST   | `/v1/feedback`          | `{"domain": "...", "label": "fake"}`, `"legit"` or `null` |
+| GET    | `/v1/feedback`          | every labelled domain, with its verdict         |
 
 Every `/v1` route expects `Authorization: Bearer <SHOPGUARD_TOKEN>`.
 
 `/v1/verdicts` takes `min_score`, `q` (part of the domain), `offset` and `limit` (≤ 1000);
 the `X-Total-Count` header gives the number of verdicts matching the filter.
+
+Feedback is the user's decision on a domain, and overrides its score: `fake` counts as 100
+(always in the blocklist), `legit` as 0 (never), `null` forgets the decision. The verdict
+keeps its computed `score` and gains `"feedback": {"label": "fake", "at": <unix time>}`. A
+domain labelled before it was ever seen is analyzed right away. Labelled domains are never
+evicted: they are the data to tune the weights with, and the confirmed fake shops to report
+upstream.
 
 ### Develop
 
