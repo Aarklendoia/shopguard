@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/Aarklendoia/shopguard/compare/plugin-v0.4.0...plugin-v0.4.1) (2026-11-18)
+
+
+### Bug Fixes
+
+* **plugin:** blocking takes effect at once, readable verdicts, Apply feedback ([#68](https://github.com/Aarklendoia/shopguard/issues/68)) ([1fc9ace](https://github.com/Aarklendoia/shopguard/commit/1fc9ace37d2ea7b873d1624958b8ccc4fe0861f8))
+
 ## [0.4.0](https://github.com/Aarklendoia/shopguard/compare/plugin-v0.3.0...plugin-v0.4.0) (2026-11-18)
 
 
