@@ -1,0 +1,6 @@
+# the Unbound blocklist handler is gone: rebuild the blocklists without the
+# ShopGuard domains, and drop its state (sent names, blocklist)
+rm -rf /var/db/shopguard
+if [ -x /usr/local/sbin/configctl ]; then
+	/usr/local/sbin/configctl unbound dnsbl > /dev/null 2>&1 || true
+fi

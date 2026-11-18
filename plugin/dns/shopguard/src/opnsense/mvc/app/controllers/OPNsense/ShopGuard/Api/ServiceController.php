@@ -44,15 +44,23 @@ class ServiceController extends ApiControllerBase
     }
 
     /**
-     * apply the settings: the collection cron job exists only while ShopGuard is enabled
+     * apply the settings: the cron job exists only while ShopGuard is enabled, and the
+     * blocklist follows the mode and threshold right away (emptied in Observe mode)
      */
     public function reconfigureAction()
     {
         if (!$this->request->isPost()) {
             return ['status' => 'failed'];
         }
-        $out = trim((new Backend())->configdRun('cron restart'));
-        return ['status' => stripos($out, 'error') === false ? 'ok' : 'failed'];
+        $backend = new Backend();
+        $out = trim($backend->configdRun('cron restart'));
+        $blocklist = json_decode(trim($backend->configdRun('shopguard blocklist')), true);
+        $result = ['status' => stripos($out, 'error') === false ? 'ok' : 'failed'];
+        if (is_array($blocklist) && ($blocklist['status'] ?? '') !== 'ok') {
+            $result['status'] = 'failed';
+            $result['message'] = $blocklist['message'] ?? '';
+        }
+        return $result;
     }
 
     /**

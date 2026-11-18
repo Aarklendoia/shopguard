@@ -148,6 +148,15 @@ DNS, *Settings* tab, *Enabled*); no query log is needed. Only the `domain` colum
 Blocked queries, failed lookups, LAN host overrides and local names (`.lan`, `.home`,
 `.arpa`, the router's own domain…) are left out. State: `/var/db/shopguard/`.
 
+In **Block** mode, the same run fetches the domains scoring at least the threshold and
+hands them to Unbound's blocklist, as one more source next to the lists of **Services →
+Unbound DNS → Blocklist** (a handler in `scripts/unbound/blocklists/`, the mechanism the
+core lists and other plugins use). Each domain is blocked with its subdomains and answered
+`NXDOMAIN`, for every client; blocked queries show in Reporting → Unbound DNS with the
+list *ShopGuard*. Unbound reloads its blocklists only when the ShopGuard domains change.
+When the worker cannot be reached, the previous list stays. Back to *Observe*, or
+disabled, nothing is blocked any more.
+
 Install it once, as root on the router: [`plugin/install.sh`](plugin/install.sh) adds the
 signed package repository (GitHub Pages of this repository) and installs the plugin. It is
 then listed under System → Firmware → Plugins, and its updates come with the OPNsense

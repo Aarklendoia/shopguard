@@ -40,6 +40,13 @@
                     $('#st_worker').text(data.message || '{{ lang._('Unreachable') }}');
                     $('#st_pending').text('');
                 }
+                if (data.mode === 'block') {
+                    $('#st_blocked').text(data.blocked + ' {{ lang._('domains blocked in Unbound') }}');
+                } else if (data.mode === 'observe') {
+                    $('#st_blocked').text('{{ lang._('Observe only: nothing blocked') }}');
+                } else {
+                    $('#st_blocked').text('{{ lang._('Disabled') }}');
+                }
                 var c = data.collect;
                 if (!c) {
                     $('#st_collect').text('{{ lang._('Not run yet') }}');
@@ -58,8 +65,15 @@
 
         $('#btn_save').click(function () {
             saveFormToEndpoint('/api/shopguard/settings/set', 'frm_general', function () {
-                // (re)creates or removes the collection cron job
-                ajaxCall('/api/shopguard/service/reconfigure', {}, function () {
+                // (re)creates or removes the cron job, applies the mode to the blocklist
+                ajaxCall('/api/shopguard/service/reconfigure', {}, function (data) {
+                    if (data.status !== 'ok' && data.message) {
+                        BootstrapDialog.show({
+                            type: BootstrapDialog.TYPE_WARNING,
+                            title: '{{ lang._('Blocklist') }}',
+                            message: $('<div/>').text(data.message)
+                        });
+                    }
                     refreshStatus();
                 });
             });
@@ -191,6 +205,7 @@
             <tr><td style="width:22%">{{ lang._('Status') }}</td><td id="st_worker"></td></tr>
             <tr><td>{{ lang._('Domains waiting for analysis') }}</td><td id="st_pending"></td></tr>
             <tr><td>{{ lang._('Last collection') }}</td><td id="st_collect"></td></tr>
+            <tr><td>{{ lang._('Blocking') }}</td><td id="st_blocked"></td></tr>
         </tbody>
     </table>
 </div>

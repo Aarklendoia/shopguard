@@ -1,0 +1,5 @@
+# an upgrade replaces the Unbound blocklist handler: rebuild the blocklists so that
+# the ShopGuard domains stay blocked (nothing to do before the first blocklist)
+if [ -s /var/db/shopguard/blocklist.json ] && [ -x /usr/local/sbin/configctl ]; then
+	/usr/local/sbin/configctl unbound dnsbl > /dev/null 2>&1 || true
+fi

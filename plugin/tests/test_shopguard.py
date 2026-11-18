@@ -7,6 +7,7 @@ Backend tests, against a fake worker on loopback.
 import importlib.util
 import json
 import os
+import shutil
 import sys
 import tempfile
 import threading
@@ -229,6 +230,138 @@ class Collect(unittest.TestCase):
         self.assertIn('statistics', r['message'])
 
 
+class Blocklist(unittest.TestCase):
+    """Domains written for Unbound, from the fake worker (no paging: the old-worker path)."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.srv = HTTPServer(('127.0.0.1', 0), FakeWorker)
+        threading.Thread(target=cls.srv.serve_forever, daemon=True).start()
+        cls.url = 'http://127.0.0.1:%d' % cls.srv.server_port
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.srv.shutdown()
+
+    def setUp(self):
+        self.state = tempfile.mkdtemp()
+        self.cfg = {'enabled': True, 'worker_url': self.url, 'token': TOKEN, 'mode': 'block', 'threshold': 80}
+        self.reloads = 0
+
+    def reload(self):
+        self.reloads += 1
+
+    def run_blocklist(self):
+        return sg.blocklist(self.cfg, self.state, reload=self.reload, now=1000)
+
+    def written(self):
+        return sg.load_json(os.path.join(self.state, sg.BLOCKLIST), {}).get('domains')
+
+    def test_block_mode(self):
+        r = self.run_blocklist()
+        self.assertEqual((r['status'], r['blocked'], r['changed']), ('ok', 1, True))
+        self.assertEqual(self.written(), ['fake-shop.fr'])
+        self.assertEqual(self.reloads, 1)
+        # unchanged: Unbound is not reloaded
+        self.assertFalse(self.run_blocklist()['changed'])
+        self.assertEqual(self.reloads, 1)
+        # a lower threshold blocks more
+        self.cfg['threshold'] = 40
+        self.assertEqual(self.run_blocklist()['blocked'], 2)
+        self.assertEqual(self.written(), ['fake-shop.fr', 'shop.example.com'])
+        self.assertEqual(sg.blocked_count(self.state), 2)
+
+    def test_observe_mode_and_disabled_unblock(self):
+        self.run_blocklist()
+        self.cfg['mode'] = 'observe'
+        r = self.run_blocklist()
+        self.assertEqual((r['blocked'], r['changed'], r['mode']), (0, True, 'observe'))
+        self.assertEqual((self.written(), self.reloads), ([], 2))
+        self.cfg['mode'] = 'block'
+        self.run_blocklist()
+        self.cfg['enabled'] = False
+        self.assertEqual(self.run_blocklist()['blocked'], 0)
+        # never blocking, nothing to reload
+        fresh = tempfile.mkdtemp()
+        self.assertFalse(sg.blocklist(self.cfg, fresh, reload=self.reload)['changed'])
+
+    def test_worker_down_keeps_the_list(self):
+        self.run_blocklist()
+        self.cfg['worker_url'] = 'http://127.0.0.1:9'
+        r = self.run_blocklist()
+        self.assertEqual((r['status'], r['blocked']), ('error', 1))
+        self.assertIn('previous', r['message'])
+        self.assertEqual((self.written(), self.reloads), (['fake-shop.fr'], 1))
+        self.cfg['token'] = 'x' * 32
+        self.cfg['worker_url'] = self.url
+        self.assertEqual(self.run_blocklist()['status'], 'error')
+        self.assertEqual(self.written(), ['fake-shop.fr'])
+
+
+class Handler(unittest.TestCase):
+    """The Unbound blocklist handler, loaded as OPNsense loads it (a module of the
+    `blocklists` package, next to the core's BaseBlocklistHandler)."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        pkg = os.path.join(self.dir, 'blocklists')
+        os.mkdir(pkg)
+        with open(os.path.join(pkg, '__init__.py'), 'w') as f:
+            f.write(BASE)
+        shutil.copy(HANDLER, pkg)
+        self.list = os.path.join(self.dir, 'blocklist.json')
+        os.environ['SHOPGUARD_BLOCKLIST'] = self.list
+        sys.modules.setdefault('ujson', json)
+        sys.path.insert(0, self.dir)
+        for m in ('blocklists', 'blocklists.shopguard_bl'):
+            sys.modules.pop(m, None)
+        self.mod = importlib.import_module('blocklists.shopguard_bl')
+
+    def tearDown(self):
+        sys.path.remove(self.dir)
+        del os.environ['SHOPGUARD_BLOCKLIST']
+
+    def write(self, data):
+        with open(self.list, 'w') as f:
+            f.write(data if isinstance(data, str) else json.dumps(data))
+
+    def test_domains_and_policy(self):
+        self.write({'domains': ['fake-shop.fr', 'Bad Name', 42, 'autre.shop']})
+        h = self.mod.ShopGuardBlocklistHandler()
+        self.assertEqual(list(h.blocklists_iter()), [
+            ('fake-shop.fr', 'shopguard', {'bl': 'ShopGuard', 'wildcard': True}),
+            ('autre.shop', 'shopguard', {'bl': 'ShopGuard', 'wildcard': True}),
+        ])
+        p = h.get_policies()
+        self.assertEqual((p[0]['id'], p[0]['rcode'], p[0]['source_nets']), ('shopguard', 'NXDOMAIN', []))
+
+    def test_nothing_to_block(self):
+        for data in ({'domains': []}, '{broken', {'domains': 'x.fr'}, ['x.fr']):
+            self.write(data)
+            h = self.mod.ShopGuardBlocklistHandler()
+            self.assertEqual((h.get_policies(), list(h.blocklists_iter())), ([], []), data)
+        os.remove(self.list)
+        self.assertEqual(self.mod.ShopGuardBlocklistHandler().get_policies(), [])
+
+
+# what the handler needs from OPNsense's scripts/unbound/blocklists/__init__.py
+BASE = '''
+
+
+class BaseBlocklistHandler:
+    def __init__(self, config=None):
+        self.config = config
+        self.priority = 0
+        self.domain_pattern = re.compile(
+            r'^(\\*\\.){,1}(([\\da-zA-Z_])([_\\w-]{,62})\\.){,127}(([\\da-zA-Z])[_\\w-]{,61})'
+            r'?([\\da-zA-Z]\\.((xn\\-\\-[a-zA-Z\\d]+)|([a-zA-Z\\d]{2,})))$'
+        )
+'''
+
+
 if __name__ == '__main__':
     sg = load(sys.argv.pop(1))
+    # scripts/OPNsense/ShopGuard/shopguard.py -> scripts/unbound/blocklists/shopguard_bl.py
+    HANDLER = os.path.join(os.path.dirname(os.path.abspath(sg.__file__)),
+                           '..', '..', 'unbound', 'blocklists', 'shopguard_bl.py')
     unittest.main()

@@ -22,7 +22,7 @@
         <id>shopguard.general.mode</id>
         <label>Mode</label>
         <type>dropdown</type>
-        <help>Observe only: suspicious domains are listed here. Block: they are also added to the Unbound blocklist.</help>
+        <help>Observe only: suspicious domains are listed here. Block: the domains scoring at least the threshold, with their subdomains, are also blocked by Unbound (answered NXDOMAIN, updated every 5 minutes). They appear in Reporting -> Unbound DNS as blocked by ShopGuard.</help>
     </field>
     <field>
         <id>shopguard.general.threshold</id>
