@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.5.0](https://github.com/Aarklendoia/shopguard/compare/plugin-v0.4.4...plugin-v0.5.0) (2026-11-18)
+
+
+### Features
+
+* **plugin:** translations into the OPNsense interface languages ([#77](https://github.com/Aarklendoia/shopguard/issues/77)) ([1a277f8](https://github.com/Aarklendoia/shopguard/commit/1a277f838c2573b34b277a38fd64fe983a8994e6))
+* **plugin:** translations, French first ([1a277f8](https://github.com/Aarklendoia/shopguard/commit/1a277f838c2573b34b277a38fd64fe983a8994e6)), closes [#14](https://github.com/Aarklendoia/shopguard/issues/14)
+
+
+### Bug Fixes
+
+* **plugin:** no grey squares for disabled buttons in the dark theme ([#76](https://github.com/Aarklendoia/shopguard/issues/76)) ([4e493d5](https://github.com/Aarklendoia/shopguard/commit/4e493d547d1cac84e5172dcafd97377b0fdddc58))
+
 ## [0.4.4](https://github.com/Aarklendoia/shopguard/compare/plugin-v0.4.3...plugin-v0.4.4) (2026-11-18)
 
 
