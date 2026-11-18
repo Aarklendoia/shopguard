@@ -56,9 +56,18 @@ class ServiceController extends ApiControllerBase
         $out = trim($backend->configdRun('cron restart'));
         $blocklist = json_decode(trim($backend->configdRun('shopguard blocklist')), true);
         $result = ['status' => stripos($out, 'error') === false ? 'ok' : 'failed'];
-        if (is_array($blocklist) && ($blocklist['status'] ?? '') !== 'ok') {
+        if (!is_array($blocklist)) {
+            $result['status'] = 'failed';
+        } elseif (($blocklist['status'] ?? '') !== 'ok') {
             $result['status'] = 'failed';
             $result['message'] = $blocklist['message'] ?? '';
+        } else {
+            // shown after Apply: "N domains blocked", "observe only" or "disabled"
+            $result['mode'] = $blocklist['mode'] ?? '';
+            $result['blocked'] = (int)($blocklist['blocked'] ?? 0);
+        }
+        if ($result['status'] !== 'ok' && empty($result['message']) && stripos($out, 'error') !== false) {
+            $result['message'] = gettext('the cron job could not be updated.');
         }
         return $result;
     }

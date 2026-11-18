@@ -314,7 +314,8 @@ class Blocklist(unittest.TestCase):
         self.cfg['mode'] = 'block'
         self.run_blocklist()
         self.cfg['enabled'] = False
-        self.assertEqual(self.run_blocklist()['blocked'], 0)
+        r = self.run_blocklist()
+        self.assertEqual((r['blocked'], r['mode']), (0, 'disabled'))
         # never blocking, nothing to reload
         fresh = tempfile.mkdtemp()
         self.assertFalse(sg.blocklist(self.cfg, fresh, reload=self.reload)['changed'])

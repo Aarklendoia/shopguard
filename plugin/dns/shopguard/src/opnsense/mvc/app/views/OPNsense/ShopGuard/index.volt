@@ -63,19 +63,40 @@
             });
         }
 
+        // Apply: spinner while saving and updating the blocklist, then what was applied
+        function applying(on) {
+            $('#btn_save').prop('disabled', on);
+            $('#frm_general_progress').toggleClass('fa fa-spinner fa-pulse', on);
+        }
+
+        function applied(type, text) {
+            $('#apply_result').removeClass('alert-success alert-warning').addClass('alert-' + type)
+                .text(text).show();
+        }
+
         $('#btn_save').click(function () {
+            $('#apply_result').hide();
+            applying(true);
             saveFormToEndpoint('/api/shopguard/settings/set', 'frm_general', function () {
                 // (re)creates or removes the cron job, applies the mode to the blocklist
                 ajaxCall('/api/shopguard/service/reconfigure', {}, function (data) {
-                    if (data.status !== 'ok' && data.message) {
-                        BootstrapDialog.show({
-                            type: BootstrapDialog.TYPE_WARNING,
-                            title: '{{ lang._('Blocklist') }}',
-                            message: $('<div/>').text(data.message)
-                        });
+                    applying(false);
+                    if (data.status !== 'ok') {
+                        applied('warning', '{{ lang._('Settings saved, but:') }} ' +
+                            (data.message || '{{ lang._('the blocklist could not be updated.') }}'));
+                    } else if (data.mode === 'block') {
+                        applied('success', '{{ lang._('Settings applied:') }} ' + data.blocked +
+                            ' {{ lang._('domains blocked in Unbound.') }}');
+                    } else if (data.mode === 'observe') {
+                        applied('success', '{{ lang._('Settings applied: observe only, nothing is blocked.') }}');
+                    } else {
+                        applied('success', '{{ lang._('Settings applied: ShopGuard is disabled.') }}');
                     }
                     refreshStatus();
                 });
+            }, false, function () {
+                // invalid fields: shown on the form
+                applying(false);
             });
         });
 
@@ -350,5 +371,6 @@
 </div>
 
     {{ partial('layout_partials/base_form', ['fields': generalForm, 'id': 'frm_general', 'apply_btn_id': 'btn_save']) }}
+    <div id="apply_result" class="alert" role="alert" style="display: none; margin: 0 1em 1em;"></div>
 </div>
 </div>

@@ -382,7 +382,7 @@ def blocklist(cfg, state_dir=STATE_DIR, reload=None, now=None):
         (reload or reload_unbound)()
         syslog.syslog(syslog.LOG_NOTICE, 'shopguard blocklist: %d domains blocked' % len(domains))
     return {'status': 'ok', 'blocked': len(domains), 'changed': changed,
-            'mode': 'block' if blocking else 'observe'}
+            'mode': 'block' if blocking else ('observe' if cfg['enabled'] else 'disabled')}
 
 
 def reload_unbound():
