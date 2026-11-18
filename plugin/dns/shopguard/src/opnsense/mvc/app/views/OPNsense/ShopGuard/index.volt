@@ -88,6 +88,84 @@
                 .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         }
 
+        function warn(message) {
+            BootstrapDialog.show({
+                type: BootstrapDialog.TYPE_WARNING,
+                title: '{{ lang._('ShopGuard') }}',
+                message: $('<div/>').text(message)
+            });
+        }
+
+        // the user's decision on a domain: fake (always blocked), legit (never), none
+        function decide(domain, label) {
+            ajaxCall('/api/shopguard/service/feedback', {domain: domain, label: label}, function (data) {
+                if (data.status !== 'ok') {
+                    warn(data.message || '{{ lang._('The decision was not saved.') }}');
+                } else if (data.message) {
+                    warn(data.message);
+                }
+                $('#grid-verdicts').bootgrid('reload');
+                loadLabels();
+                refreshStatus();
+            });
+        }
+
+        function decisionBadge(feedback) {
+            if (!feedback) return '';
+            return feedback.label === 'fake'
+                ? ' <span class="label label-danger">{{ lang._('marked fake') }}</span>'
+                : ' <span class="label label-success">{{ lang._('marked legitimate') }}</span>';
+        }
+
+        var labels = [];
+
+        function loadLabels() {
+            ajaxGet('/api/shopguard/service/labels', {}, function (data) {
+                labels = data.rows || [];
+                $('#labels_message').text(data.status === 'ok' ? '' : (data.message || '')).toggle(data.status !== 'ok');
+                var body = $('#labels tbody').empty();
+                labels.forEach(function (r) {
+                    $('<tr/>')
+                        .append($('<td/>').text(r.domain))
+                        .append($('<td/>').html(decisionBadge({label: r.label})))
+                        .append($('<td/>').text(r.at ? new Date(r.at * 1000).toLocaleString() : ''))
+                        .append($('<td/>').text(r.checked_at ? r.score : '{{ lang._('not analyzed yet') }}'))
+                        .append($('<td/>').append(
+                            $('<button type="button" class="btn btn-xs btn-default"/>')
+                                .attr('title', '{{ lang._('Forget the decision') }}')
+                                .append('<span class="fa fa-fw fa-undo"></span>')
+                                .on('click', function () { decide(r.domain, 'none'); })
+                        ))
+                        .appendTo(body);
+                });
+                if (!labels.length) {
+                    $('<tr/>').append($('<td colspan="5"/>').text('{{ lang._('No decision yet.') }}')).appendTo(body);
+                }
+                $('#export_fake').prop('disabled', !labels.some(function (r) { return r.label === 'fake'; }));
+            });
+        }
+
+        $('#decide_fake, #decide_legit').click(function () {
+            var domain = $.trim($('#decide_domain').val()).toLowerCase();
+            if (!domain) return;
+            decide(domain, this.id === 'decide_fake' ? 'fake' : 'legit');
+            $('#decide_domain').val('');
+        });
+
+        // confirmed fake shops, one domain per line: for HaGeZi or Signal Arnaques reports
+        $('#export_fake').click(function () {
+            var text = labels.filter(function (r) { return r.label === 'fake'; })
+                .map(function (r) { return r.domain; }).join('\n') + '\n';
+            var link = document.createElement('a');
+            link.href = URL.createObjectURL(new Blob([text], {type: 'text/plain'}));
+            link.download = 'shopguard-fake-shops.txt';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+
+        loadLabels();
+
         function scoreClass(score) {
             if (score >= {{ threshold }}) return 'danger';
             if (score >= 50) return 'warning';
@@ -111,7 +189,8 @@
                 },
                 formatters: {
                     score: function (column, row) {
-                        return '<span class="label label-' + scoreClass(row.score) + '">' + esc(row.score) + '</span>';
+                        return '<span class="label label-' + scoreClass(row.score) + '">' + esc(row.score) + '</span>' +
+                            decisionBadge(row.feedback);
                     },
                     checked: function (column, row) {
                         return row.checked_at ? esc(new Date(row.checked_at * 1000).toLocaleString()) : '';
@@ -122,13 +201,26 @@
                         }).join(', ');
                     },
                     details: function (column, row) {
-                        return '<button type="button" class="btn btn-xs btn-default verdict-details" data-row-id="' +
-                            esc(row.domain) + '" title="{{ lang._('Signals') }}"><span class="fa fa-fw fa-info-circle"></span></button>';
+                        var id = ' data-row-id="' + esc(row.domain) + '"';
+                        var out = '<button type="button" class="btn btn-xs btn-default verdict-details"' + id +
+                            ' title="{{ lang._('Signals') }}"><span class="fa fa-fw fa-info-circle"></span></button> ';
+                        if (row.feedback) {
+                            return out + '<button type="button" class="btn btn-xs btn-default verdict-decide"' + id +
+                                ' data-label="none" title="{{ lang._('Forget the decision') }}"><span class="fa fa-fw fa-undo"></span></button>';
+                        }
+                        return out +
+                            '<button type="button" class="btn btn-xs btn-default verdict-decide"' + id +
+                            ' data-label="legit" title="{{ lang._('Legitimate: never block') }}"><span class="fa fa-fw fa-thumbs-up"></span></button> ' +
+                            '<button type="button" class="btn btn-xs btn-default verdict-decide"' + id +
+                            ' data-label="fake" title="{{ lang._('Fake shop: always block') }}"><span class="fa fa-fw fa-thumbs-down"></span></button>';
                     }
                 }
             }
         }).on('loaded.rs.jquery.bootgrid', function () {
             var rows = $(this).bootgrid('getCurrentRows');
+            $(this).find('.verdict-decide').off('click').on('click', function () {
+                decide($(this).data('row-id'), $(this).data('label'));
+            });
             $(this).find('.verdict-details').off('click').on('click', function () {
                 var domain = $(this).data('row-id');
                 var row = rows.filter(function (r) { return r.domain === domain; })[0];
@@ -165,6 +257,7 @@
 
 <ul class="nav nav-tabs" data-tabs="tabs" id="maintabs">
     <li class="active"><a data-toggle="tab" href="#verdicts">{{ lang._('Verdicts') }}</a></li>
+    <li><a data-toggle="tab" href="#decisions">{{ lang._('Decisions') }}</a></li>
     <li><a data-toggle="tab" href="#settings">{{ lang._('Settings') }}</a></li>
 </ul>
 
@@ -188,7 +281,34 @@
                 <th data-column-id="score" data-type="numeric" data-width="6em" data-formatter="score">{{ lang._('Score') }}</th>
                 <th data-column-id="signals" data-formatter="signals">{{ lang._('Signals') }}</th>
                 <th data-column-id="checked_at" data-width="12em" data-formatter="checked">{{ lang._('Last check') }}</th>
-                <th data-column-id="details" data-width="5em" data-formatter="details" data-sortable="false"></th>
+                <th data-column-id="details" data-width="8em" data-formatter="details" data-sortable="false"></th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+</div>
+
+<div id="decisions" class="tab-pane fade">
+    <div style="padding: 1em 1em 0;">
+        <p>{{ lang._('Your decisions override the score: a domain marked fake is always blocked (in Block mode), one marked legitimate never is. They are kept by the worker, which also uses them to improve its scoring.') }}</p>
+        <div class="form-inline">
+            <input type="text" id="decide_domain" class="form-control" placeholder="example-shop.com" style="width: 20em;"/>
+            <button type="button" id="decide_fake" class="btn btn-danger"><span class="fa fa-fw fa-thumbs-down"></span> {{ lang._('Fake shop') }}</button>
+            <button type="button" id="decide_legit" class="btn btn-success"><span class="fa fa-fw fa-thumbs-up"></span> {{ lang._('Legitimate') }}</button>
+            <button type="button" id="export_fake" class="btn btn-default pull-right" disabled="disabled"
+                    title="{{ lang._('One domain per line, to report them (HaGeZi, Signal Arnaques)') }}">
+                <span class="fa fa-fw fa-download"></span> {{ lang._('Export the fake shops') }}</button>
+        </div>
+        <span id="labels_message" class="text-danger" style="display: none;"></span>
+    </div>
+    <table id="labels" class="table table-condensed table-striped">
+        <thead>
+            <tr>
+                <th>{{ lang._('Domain') }}</th>
+                <th>{{ lang._('Decision') }}</th>
+                <th>{{ lang._('Since') }}</th>
+                <th>{{ lang._('Computed score') }}</th>
+                <th style="width: 5em;"></th>
             </tr>
         </thead>
         <tbody></tbody>

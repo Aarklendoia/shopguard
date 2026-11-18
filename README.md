@@ -192,6 +192,13 @@ list *ShopGuard*. Unbound reloads its blocklists only when the ShopGuard domains
 When the worker cannot be reached, the previous list stays. Back to *Observe*, or
 disabled, nothing is blocked any more.
 
+**Decisions** override the score: each verdict has *legitimate* (never blocked) and *fake
+shop* (always blocked in Block mode) buttons, and the *Decisions* tab lists them, takes a
+domain typed in by hand (analyzed right away if the worker has not seen it) and exports the
+confirmed fake shops, one domain per line, to report them (HaGeZi, Signal Arnaques). The
+decisions are kept by the worker (`/v1/feedback`, worker 0.9 or later), so routers sharing a
+worker share them, and they are the labelled data to tune the scoring with.
+
 Install it once, as root on the router: [`plugin/install.sh`](plugin/install.sh) adds the
 signed package repository (GitHub Pages of this repository) and installs the plugin. It is
 then listed under System → Firmware → Plugins, and its updates come with the OPNsense
