@@ -372,9 +372,8 @@ def blocklist(cfg, state_dir=STATE_DIR, reload=None, now=None):
             return {'status': 'error', 'message': message, 'blocked': len(old.get('domains', []))}
     changed = domains != old.get('domains', [])
     if changed or not os.path.exists(path):
+        # read by Unbound's blocklist script, which runs as root like this one
         save_json(path, {'domains': domains, 'threshold': cfg['threshold'], 'time': now})
-        # world-readable: Unbound's blocklist script runs as root, but keep it simple to inspect
-        os.chmod(path, 0o644)
     if changed:
         (reload or reload_unbound)()
         syslog.syslog(syslog.LOG_NOTICE, 'shopguard blocklist: %d domains blocked' % len(domains))
