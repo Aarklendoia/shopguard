@@ -8,10 +8,17 @@
 //! | GET    | `/v1/verdicts`          | yes  | verdicts, highest score first (see below)       |
 //! | GET    | `/v1/verdicts/{domain}` | yes  | one verdict                                     |
 //! | GET    | `/v1/blocklist`         | yes  | domains scoring at least the threshold, as text |
+//! | POST   | `/v1/feedback`          | yes  | the user's decision: fake, legit, or forget it  |
+//! | GET    | `/v1/feedback`          | yes  | every labelled domain with its verdict          |
 //!
 //! `/v1/verdicts` takes `min_score` (default 0), `q` (domain contains, case-insensitive),
 //! `offset` (default 0) and `limit` (default: all, at most 1000 when given). The body is
 //! the array of verdicts of the page; `X-Total-Count` gives the number matching the filter.
+//!
+//! Feedback (`{"domain": "shop.fr", "label": "fake"}`, `"legit"`, or `null` to forget it)
+//! overrides the score: `min_score`, the order and the blocklist use 100 for `fake` and 0
+//! for `legit`, while `score` stays the computed one. Verdicts then carry
+//! `"feedback": {"label": "fake", "at": <unix time>}`.
 //!
 //! Authenticated routes expect `Authorization: Bearer <SHOPGUARD_TOKEN>`.
 //! The plugin only ever sends domain names: no client address, no timestamp.
@@ -28,7 +35,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
 use crate::domain;
-use crate::store::Store;
+use crate::store::{Label, Listed, Store};
 
 /// Most domains accepted in one request.
 pub const MAX_BATCH: usize = 5000;
@@ -48,6 +55,7 @@ pub fn router(state: AppState) -> Router {
         .route("/verdicts", get(verdicts))
         .route("/verdicts/{domain}", get(verdict))
         .route("/blocklist", get(blocklist))
+        .route("/feedback", get(feedback_list).post(feedback))
         .route_layer(middleware::from_fn_with_state(state.clone(), auth));
     Router::new()
         .route(
@@ -170,7 +178,7 @@ async fn verdicts(
         .verdicts(q.min_score)
         .await
         .into_iter()
-        .filter(|v| needle.is_empty() || v.domain.contains(&needle))
+        .filter(|v| needle.is_empty() || v.verdict.domain.contains(&needle))
         .collect();
     let total = all.len();
     let limit = q.limit.map_or(usize::MAX, |l| l.min(MAX_PAGE));
@@ -188,11 +196,54 @@ async fn verdict(State(state): State<AppState>, Path(name): Path<String>) -> Res
     }
 }
 
+#[derive(Deserialize)]
+struct FeedbackRequest {
+    domain: String,
+    /// `fake`, `legit`, or null to forget the decision.
+    label: Option<Label>,
+}
+
+#[derive(Serialize, Debug, PartialEq)]
+struct FeedbackAnswer {
+    domain: String,
+    label: Option<Label>,
+    /// The domain was not known: it is analyzed now.
+    queued: bool,
+}
+
+/// The user's decision on a domain: it overrides the score (fake: always blocked,
+/// legit: never), and is kept as labelled data.
+async fn feedback(
+    State(state): State<AppState>,
+    Json(req): Json<FeedbackRequest>,
+) -> Result<Json<FeedbackAnswer>, StatusCode> {
+    let d = domain::registrable(&req.domain).ok_or(StatusCode::BAD_REQUEST)?;
+    let mut queued = false;
+    if state.store.set_feedback(&d, req.label).await {
+        match state.queue.try_send(d.clone()) {
+            Ok(()) => queued = true,
+            // the scheduler analyzes it later
+            Err(_) => state.store.release(&d).await,
+        }
+    }
+    Ok(Json(FeedbackAnswer {
+        domain: d,
+        label: req.label,
+        queued,
+    }))
+}
+
+/// Every labelled domain with its verdict, by name: for exporting the confirmed fake
+/// shops, and for tuning the weights.
+async fn feedback_list(State(state): State<AppState>) -> Json<Vec<Listed>> {
+    Json(state.store.feedback().await)
+}
+
 /// One domain per line, the format Unbound blocklists accept.
 async fn blocklist(State(state): State<AppState>) -> impl IntoResponse {
     let mut body = String::new();
     for v in state.store.verdicts(state.threshold).await {
-        body.push_str(&v.domain);
+        body.push_str(&v.verdict.domain);
         body.push('\n');
     }
     ([(header::CONTENT_TYPE, "text/plain; charset=utf-8")], body)
@@ -344,6 +395,106 @@ mod tests {
             .await
             .unwrap();
         assert!(text(r).await.contains(r#""score":90"#));
+    }
+
+    #[tokio::test]
+    async fn feedback_overrides_the_score() {
+        let (app, store, mut rx) = app(10);
+        let sig = |w| Signal {
+            source: "t".into(),
+            name: "t".into(),
+            weight: w,
+            detail: String::new(),
+        };
+        store
+            .insert(Verdict::new("fake.com".into(), vec![sig(90)]))
+            .await;
+        store
+            .insert(Verdict::new("meh.com".into(), vec![sig(40)]))
+            .await;
+        let post = |body: &'static str| {
+            app.clone()
+                .oneshot(req("POST", "/v1/feedback", Some(TOKEN), Some(body)))
+        };
+        // a real shop above the threshold, a fake one below, an unknown one
+        let r = post(r#"{"domain": "www.fake.com", "label": "legit"}"#)
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::OK);
+        assert!(
+            text(r)
+                .await
+                .contains(r#""domain":"fake.com","label":"legit","queued":false"#)
+        );
+        post(r#"{"domain": "meh.com", "label": "fake"}"#)
+            .await
+            .unwrap();
+        let r = post(r#"{"domain": "new.shop", "label": "fake"}"#)
+            .await
+            .unwrap();
+        assert!(text(r).await.contains(r#""queued":true"#));
+        assert_eq!(rx.try_recv().unwrap(), "new.shop");
+        let r = app
+            .clone()
+            .oneshot(req("GET", "/v1/blocklist", Some(TOKEN), None))
+            .await
+            .unwrap();
+        assert_eq!(text(r).await, "meh.com\nnew.shop\n");
+        // the computed score stays, with the feedback next to it
+        let r = app
+            .clone()
+            .oneshot(req("GET", "/v1/verdicts/fake.com", Some(TOKEN), None))
+            .await
+            .unwrap();
+        let body = text(r).await;
+        assert!(
+            body.contains(r#""score":90"#) && body.contains(r#""label":"legit""#),
+            "{body}"
+        );
+        let r = app
+            .clone()
+            .oneshot(req("GET", "/v1/feedback", Some(TOKEN), None))
+            .await
+            .unwrap();
+        let list: Vec<serde_json::Value> = serde_json::from_str(&text(r).await).unwrap();
+        let names: Vec<&str> = list.iter().map(|v| v["domain"].as_str().unwrap()).collect();
+        assert_eq!(names, ["fake.com", "meh.com", "new.shop"]);
+        // forgotten: back to the computed score
+        post(r#"{"domain": "fake.com", "label": null}"#)
+            .await
+            .unwrap();
+        let r = app
+            .clone()
+            .oneshot(req("GET", "/v1/blocklist", Some(TOKEN), None))
+            .await
+            .unwrap();
+        // labelled fakes first (effective score 100)
+        assert_eq!(text(r).await, "meh.com\nnew.shop\nfake.com\n");
+        // not a domain, not a label, no token
+        assert_eq!(
+            post(r#"{"domain": "localhost", "label": "fake"}"#)
+                .await
+                .unwrap()
+                .status(),
+            StatusCode::BAD_REQUEST
+        );
+        assert!(
+            post(r#"{"domain": "a.fr", "label": "maybe"}"#)
+                .await
+                .unwrap()
+                .status()
+                .is_client_error()
+        );
+        let r = app
+            .oneshot(req(
+                "POST",
+                "/v1/feedback",
+                None,
+                Some(r#"{"domain": "a.fr", "label": "fake"}"#),
+            ))
+            .await
+            .unwrap();
+        assert_eq!(r.status(), StatusCode::UNAUTHORIZED);
     }
 
     #[tokio::test]
