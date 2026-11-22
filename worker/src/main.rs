@@ -26,6 +26,7 @@ mod siret;
 mod store;
 mod tls;
 mod vies;
+mod whois;
 
 use std::process::ExitCode;
 use std::sync::Arc;
