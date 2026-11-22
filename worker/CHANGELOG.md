@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.10.0](https://github.com/Aarklendoia/shopguard/compare/worker-v0.9.0...worker-v0.10.0) (2026-11-22)
+
+
+### Features
+
+* **worker:** registration date from WHOIS for TLDs without RDAP ([#81](https://github.com/Aarklendoia/shopguard/issues/81)) ([c6dec9d](https://github.com/Aarklendoia/shopguard/commit/c6dec9d34804bd5a1793f24730ee44fe4e6fcb27))
+
+
+### Bug Fixes
+
+* **worker:** bump the rust group in /worker with 2 updates ([#82](https://github.com/Aarklendoia/shopguard/issues/82)) ([b1f3462](https://github.com/Aarklendoia/shopguard/commit/b1f3462cb53d15bcc1deb4be168c120119252b45))
+
 ## [0.9.0](https://github.com/Aarklendoia/shopguard/compare/worker-v0.8.0...worker-v0.9.0) (2026-11-18)
 
 
